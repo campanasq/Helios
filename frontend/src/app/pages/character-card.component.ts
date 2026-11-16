@@ -1,35 +1,39 @@
 import { Component, input } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { ABILITIES, modifier, signed } from '../core/dnd';
 import { Character } from '../core/models';
-import { STATS } from './character-form.component';
 
 @Component({
   selector: 'app-character-card',
+  imports: [RouterLink],
   template: `
     @let c = character();
     <article class="card char-card">
-      <header>
-        <h3>{{ c.name }}</h3>
-        <span class="badge">Nv. {{ c.level }}</span>
-      </header>
-      <p class="muted">{{ c.race }} · {{ c.class }}@if (c.alignment) { · {{ c.alignment }} }</p>
-      @if (c.user && showOwner()) { <p class="owner">Jugador: <strong>{{ c.user.name }}</strong></p> }
-      <div class="stat-row">
-        @for (s of stats; track s.key) {
-          <div class="stat"><span>{{ s.label }}</span><strong>{{ c[s.key] }}</strong><small>{{ mod(c[s.key]) }}</small></div>
-        }
+      <a class="char-portrait" [routerLink]="['/personajes', c.id]" [attr.aria-label]="'Abrir hoja de ' + c.name">
+        @if (c.avatar_url) { <img [src]="c.avatar_url" [alt]="'Retrato de ' + c.name" loading="lazy" /> }
+        @else { <span>🧙</span> }
+      </a>
+      <div class="char-body">
+        <header>
+          <h3><a [routerLink]="['/personajes', c.id]">{{ c.name }}</a></h3>
+          <span class="badge">Nv. {{ c.level }}</span>
+        </header>
+        <p class="muted">{{ c.race }} · {{ c.class }}@if (c.alignment) { · {{ c.alignment }} }</p>
+        @if (c.user && showOwner()) { <p class="owner">Jugador: <strong>{{ c.user.name }}</strong></p> }
+        <div class="stat-row">
+          @for (a of abilities; track a.key) {
+            <div class="stat"><span>{{ a.short }}</span><strong>{{ c[a.key] }}</strong><small>{{ mod(c[a.key]) }}</small></div>
+          }
+        </div>
+        <p class="vitals">❤ {{ c.sheet.hp_current }}/{{ c.hit_points }} PG · 🛡 CA {{ c.armor_class }}</p>
+        <ng-content />
       </div>
-      <p class="vitals">❤ {{ c.hit_points }} PG · 🛡 CA {{ c.armor_class }}</p>
-      @if (c.backstory) { <p class="backstory">{{ c.backstory }}</p> }
-      <ng-content />
     </article>
   `,
 })
 export class CharacterCardComponent {
   character = input.required<Character>();
   showOwner = input(false);
-  stats = STATS;
-  mod(v: number) {
-    const m = Math.floor((v - 10) / 2);
-    return m >= 0 ? `+${m}` : `${m}`;
-  }
+  abilities = ABILITIES;
+  mod = (v: number) => signed(modifier(v));
 }

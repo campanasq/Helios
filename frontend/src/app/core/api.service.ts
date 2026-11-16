@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { environment } from '../../environments/environment';
-import { Character, Mission, Role, User } from './models';
+import { Character, GalleryCharacter, Mission, Role, User } from './models';
 
 const API = environment.apiUrl;
 
@@ -11,10 +11,19 @@ export class ApiService {
 
   // Personajes
   myCharacters() { return this.http.get<Character[]>(`${API}/characters`); }
+  character(id: number) { return this.http.get<Character>(`${API}/characters/${id}`); }
   allCharacters() { return this.http.get<Character[]>(`${API}/all-characters`); }
   createCharacter(c: Partial<Character>) { return this.http.post<Character>(`${API}/characters`, c); }
   updateCharacter(id: number, c: Partial<Character>) { return this.http.put<Character>(`${API}/characters/${id}`, c); }
   deleteCharacter(id: number) { return this.http.delete<void>(`${API}/characters/${id}`); }
+  uploadAvatar(id: number, blob: Blob) {
+    const ext = blob.type.split('/')[1] ?? 'png';
+    const fd = new FormData();
+    fd.append('avatar', blob, `avatar.${ext}`);
+    return this.http.post<Character>(`${API}/characters/${id}/avatar`, fd);
+  }
+  gallery() { return this.http.get<{ characters: GalleryCharacter[]; without_portrait: number }>(`${API}/gallery`); }
+  deleteAvatar(id: number) { return this.http.delete<Character>(`${API}/characters/${id}/avatar`); }
 
   // Misiones
   missions() { return this.http.get<Mission[]>(`${API}/missions`); }

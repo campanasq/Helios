@@ -21,7 +21,7 @@ import { DIFFICULTY_LABELS, Difficulty, Mission, MissionStatus, STATUS_LABELS } 
     } @else {
       <div class="mission-list">
         @for (m of missions(); track m.id) {
-          <article class="card mission">
+          <article class="card mission parchment">
             <header>
               <h3>{{ m.title }}</h3>
               <div class="badges">
@@ -48,7 +48,7 @@ import { DIFFICULTY_LABELS, Difficulty, Mission, MissionStatus, STATUS_LABELS } 
 
     @if (formOpen()) {
       <div class="modal-backdrop" (click)="formOpen.set(false)">
-        <form class="card modal" [formGroup]="form" (ngSubmit)="save()" (click)="$event.stopPropagation()">
+        <form class="card modal parchment" [formGroup]="form" (ngSubmit)="save()" (click)="$event.stopPropagation()">
           <h2 class="title">{{ editing() ? 'Editar misión' : 'Nueva misión' }}</h2>
           <label>Título <input formControlName="title" /></label>
           <label>Descripción <textarea rows="5" formControlName="description"></textarea></label>

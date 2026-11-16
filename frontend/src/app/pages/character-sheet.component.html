@@ -1,0 +1,329 @@
+@if (loading()) {
+  <p class="muted">Cargando hoja…</p>
+} @else {
+<form class="sheet" [formGroup]="form" (ngSubmit)="save()" [class.readonly]="!editable()">
+
+  <!-- Barra superior -->
+  <div class="sheet-toolbar">
+    <a class="btn ghost small" [routerLink]="editable() ? '/mis-personajes' : '/personajes-usuarios'">← Volver</a>
+    @if (!editable() && character()?.user) {
+      <span class="muted small">Hoja de <strong>{{ character()!.user!.name }}</strong> · solo lectura</span>
+    }
+    <div class="spacer"></div>
+    @if (editable()) {
+      @if (form.dirty) { <span class="muted small">Cambios sin guardar · borrador guardado en este navegador</span> }
+      <button class="btn primary" type="submit" [disabled]="saving()">
+        {{ saving() ? 'Guardando…' : character() ? 'Guardar cambios' : 'Crear personaje' }}
+      </button>
+    }
+  </div>
+
+  @if (message()) { <div class="alert" [class.error]="isError()">{{ message() }}</div> }
+
+  @if (draftRestoredAt(); as at) {
+    <div class="alert draft-alert">
+      <span>📜 Recuperamos un borrador sin guardar del {{ at.toLocaleString('es') }}.</span>
+      <button type="button" class="btn ghost small" (click)="discardDraft()">Descartar borrador</button>
+    </div>
+  }
+
+  <div class="sheet-layout parchment">
+    <!-- ===== Columna del retrato ===== -->
+    <aside class="portrait-col">
+      <div class="portrait" [class.empty]="!avatarUrl()">
+        @if (avatarUrl()) {
+          <img [src]="avatarUrl()" [alt]="'Retrato de ' + (v().name || 'personaje')" />
+        } @else {
+          <div class="portrait-placeholder">
+            <span>🧙</span>
+            <small>Sin retrato</small>
+          </div>
+        }
+      </div>
+      @if (editable()) {
+        <div class="portrait-actions">
+          <button type="button" class="btn ghost small" (click)="cropperOpen.set(true)">{{ avatarUrl() ? 'Cambiar' : 'Subir retrato' }}</button>
+          @if (avatarUrl()) { <button type="button" class="btn danger small" (click)="removeAvatar()">Quitar</button> }
+        </div>
+      }
+
+      <div class="quick-vitals">
+        <div class="vital"><span>CA</span><strong>{{ v().armor_class }}</strong></div>
+        <div class="vital"><span>PG</span><strong>{{ v().sheet.hp_current }}/{{ v().hit_points }}</strong></div>
+        <div class="vital"><span>Init.</span><strong>{{ signed(initiative()) }}</strong></div>
+      </div>
+    </aside>
+
+    <!-- ===== Contenido de la hoja ===== -->
+    <div class="sheet-main">
+      <!-- Cabecera -->
+      <section class="sheet-header card">
+        <label class="char-name">
+          Nombre del personaje
+          <input formControlName="name" placeholder="Nombre" />
+        </label>
+        <div class="header-grid">
+          <label>Clase
+            <input formControlName="class" list="dl-classes" />
+          </label>
+          <label>Nivel <input type="number" min="1" max="20" formControlName="level" /></label>
+          <label>Trasfondo <input formControlName="background" list="dl-backgrounds" /></label>
+          <label>Nombre del jugador <input [formControl]="sheet.controls.player_name" /></label>
+          <label>Raza <input formControlName="race" list="dl-races" /></label>
+          <label>Alineamiento
+            <select formControlName="alignment">
+              <option value="">—</option>
+              @for (a of alignments; track a) { <option [value]="a">{{ a }}</option> }
+            </select>
+          </label>
+          <label>Experiencia <input type="number" min="0" [formControl]="sheet.controls.experience" /></label>
+        </div>
+        <datalist id="dl-classes">@for (c of classes; track c) { <option [value]="c"></option> }</datalist>
+        <datalist id="dl-races">@for (r of races; track r) { <option [value]="r"></option> }</datalist>
+        <datalist id="dl-backgrounds">@for (b of backgrounds; track b) { <option [value]="b"></option> }</datalist>
+      </section>
+
+      <!-- Pestañas -->
+      <div class="segmented sheet-tabs">
+        <button type="button" [class.active]="tab() === 'hoja'" (click)="tab.set('hoja')">Hoja</button>
+        <button type="button" [class.active]="tab() === 'trasfondo'" (click)="tab.set('trasfondo')">Trasfondo</button>
+        <button type="button" [class.active]="tab() === 'conjuros'" (click)="tab.set('conjuros')">Conjuros</button>
+      </div>
+
+      <!-- ================= HOJA PRINCIPAL ================= -->
+      @if (tab() === 'hoja') {
+      <div class="sheet-cols" [formGroup]="sheet">
+
+        <!-- Col 1: características, salvaciones, habilidades -->
+        <div class="col">
+          <div class="abilities-and-skills">
+            <div class="ability-col">
+              @for (a of abilities; track a.key) {
+                <div class="ability-box">
+                  <span class="ab-label">{{ a.label }}</span>
+                  <strong class="ab-mod">{{ signed(mods()[a.key]) }}</strong>
+                  <input class="ab-score" type="number" min="1" max="30" [formControl]="form.controls[a.key]" />
+                </div>
+              }
+            </div>
+
+            <div class="skills-col">
+              <div class="pill-row">
+                <label class="check-pill">
+                  <input type="checkbox" formControlName="inspiration" /> Inspiración
+                </label>
+                <div class="pill"><strong>{{ signed(prof()) }}</strong> Bonif. competencia</div>
+              </div>
+
+              <div class="card inner">
+                <h3 class="box-title">Tiradas de salvación</h3>
+                <ul class="prof-list" formGroupName="saving_throws">
+                  @for (a of abilities; track a.key) {
+                    <li>
+                      <input type="checkbox" [formControlName]="a.key" [attr.aria-label]="'Competencia en salvación de ' + a.label" />
+                      <span class="bonus">{{ signed(saveBonus(a.key)) }}</span>
+                      <span>{{ a.label }}</span>
+                    </li>
+                  }
+                </ul>
+              </div>
+
+              <div class="card inner">
+                <h3 class="box-title">Habilidades</h3>
+                <ul class="prof-list">
+                  @for (s of skills; track s.key) {
+                    @let lvl = v().sheet.skills[s.key];
+                    <li>
+                      <button type="button" class="prof-dot" [class.p1]="lvl === 1" [class.p2]="lvl === 2"
+                        [disabled]="!editable()" (click)="cycleSkill(s.key)"
+                        [title]="lvl === 2 ? 'Pericia' : lvl === 1 ? 'Competente' : 'Sin competencia'"
+                        [attr.aria-label]="s.label + ': ' + (lvl === 2 ? 'pericia' : lvl === 1 ? 'competente' : 'sin competencia')"></button>
+                      <span class="bonus">{{ signed(skillBonus(s.key, s.ability)) }}</span>
+                      <span>{{ s.label }} <small class="muted">({{ abilityShort[s.ability] }})</small></span>
+                    </li>
+                  }
+                </ul>
+                <p class="muted tiny">Clic en el círculo: competente ● → pericia ◆</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="pill passive"><strong>{{ passivePerception() }}</strong> Sabiduría (Percepción) pasiva</div>
+
+          <label class="card inner">
+            <h3 class="box-title">Otras competencias e idiomas</h3>
+            <textarea rows="5" formControlName="proficiencies_languages"></textarea>
+          </label>
+        </div>
+
+        <!-- Col 2: combate -->
+        <div class="col">
+          <div class="combat-row">
+            <label class="combat-box shield">
+              <span>Clase de armadura</span>
+              <input type="number" min="1" max="40" [formControl]="form.controls.armor_class" />
+            </label>
+            <div class="combat-box">
+              <span>Iniciativa</span>
+              <strong>{{ signed(initiative()) }}</strong>
+              <small class="muted">extra <input class="mini" type="number" formControlName="initiative_bonus" /></small>
+            </div>
+            <label class="combat-box">
+              <span>Velocidad (pies)</span>
+              <input type="number" min="0" formControlName="speed" />
+            </label>
+          </div>
+
+          <div class="card inner hp-box">
+            <label class="hp-max">Máximo de PG <input type="number" min="1" [formControl]="form.controls.hit_points" /></label>
+            <label class="hp-current">
+              <span class="box-title">Puntos de golpe actuales</span>
+              <input type="number" formControlName="hp_current" />
+            </label>
+            <label>Puntos de golpe temporales <input type="number" min="0" formControlName="hp_temp" /></label>
+          </div>
+
+          <div class="split">
+            <label class="card inner">
+              <span class="box-title">Dados de golpe</span>
+              <input formControlName="hit_dice" placeholder="Ej: 5d8" />
+            </label>
+            <div class="card inner death-saves">
+              <span class="box-title">Salvaciones de muerte</span>
+              <div class="ds-row">
+                <span>Éxitos</span>
+                @for (n of [1, 2, 3]; track n) {
+                  <button type="button" class="ds-dot ok" [class.on]="v().sheet.death_saves.successes >= n"
+                    [disabled]="!editable()" (click)="setDeathSave('successes', n)" [attr.aria-label]="'Éxito ' + n"></button>
+                }
+              </div>
+              <div class="ds-row">
+                <span>Fallos</span>
+                @for (n of [1, 2, 3]; track n) {
+                  <button type="button" class="ds-dot ko" [class.on]="v().sheet.death_saves.failures >= n"
+                    [disabled]="!editable()" (click)="setDeathSave('failures', n)" [attr.aria-label]="'Fallo ' + n"></button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="card inner">
+            <h3 class="box-title">Ataques y conjuros</h3>
+            <div class="attack-list" formArrayName="attacks">
+              @for (a of attacks.controls; track a; let i = $index) {
+                <div class="attack-row" [formGroupName]="i">
+                  <input class="atk-name" formControlName="name" placeholder="Nombre (Espada larga)" aria-label="Nombre del ataque" />
+                  <input class="atk-bonus" formControlName="bonus" placeholder="+5" aria-label="Bonificador de ataque" />
+                  @if (editable()) { <button type="button" class="icon-btn" (click)="removeAttack(i)" aria-label="Quitar ataque">✕</button> }
+                  <input class="atk-damage" formControlName="damage" placeholder="Daño / tipo (1d8+3 cortante)" aria-label="Daño y tipo" />
+                </div>
+              } @empty {
+                <p class="muted small">Sin ataques.</p>
+              }
+            </div>
+            @if (editable()) { <button type="button" class="btn ghost small" (click)="addAttack()">+ Añadir ataque</button> }
+          </div>
+
+          <div class="card inner">
+            <h3 class="box-title">Equipo</h3>
+            <div class="money" formGroupName="money">
+              @for (c of coins; track c.key) {
+                <label class="coin">{{ c.label }} <input type="number" min="0" [formControlName]="c.key" /></label>
+              }
+            </div>
+            <textarea rows="7" formControlName="equipment" placeholder="Mochila, cuerda de cáñamo (50 pies), raciones (5 días)…"></textarea>
+          </div>
+        </div>
+
+        <!-- Col 3: personalidad y rasgos -->
+        <div class="col">
+          <div class="card inner personality">
+            <label><span class="box-title">Rasgos de personalidad</span><textarea rows="3" formControlName="personality_traits"></textarea></label>
+            <label><span class="box-title">Ideales</span><textarea rows="2" formControlName="ideals"></textarea></label>
+            <label><span class="box-title">Vínculos</span><textarea rows="2" formControlName="bonds"></textarea></label>
+            <label><span class="box-title">Defectos</span><textarea rows="2" formControlName="flaws"></textarea></label>
+          </div>
+          <label class="card inner grow">
+            <h3 class="box-title">Rasgos y atributos</h3>
+            <textarea rows="16" formControlName="features_traits" placeholder="Visión en la oscuridad, Ascendencia feérica, Recuperación arcana…"></textarea>
+          </label>
+        </div>
+      </div>
+      }
+
+      <!-- ================= TRASFONDO ================= -->
+      @if (tab() === 'trasfondo') {
+      <div [formGroup]="sheet" class="background-tab">
+        <div class="card inner physical">
+          <label>Edad <input formControlName="age" /></label>
+          <label>Altura <input formControlName="height" /></label>
+          <label>Peso <input formControlName="weight" /></label>
+          <label>Ojos <input formControlName="eyes" /></label>
+          <label>Piel <input formControlName="skin" /></label>
+          <label>Pelo <input formControlName="hair" /></label>
+        </div>
+        <div class="two-cols">
+          <label class="card inner"><h3 class="box-title">Apariencia</h3><textarea rows="8" formControlName="appearance"></textarea></label>
+          <label class="card inner"><h3 class="box-title">Historia del personaje</h3><textarea rows="8" [formControl]="form.controls.backstory"></textarea></label>
+          <label class="card inner"><h3 class="box-title">Aliados y organizaciones</h3><textarea rows="8" formControlName="allies"></textarea></label>
+          <label class="card inner"><h3 class="box-title">Rasgos y atributos adicionales</h3><textarea rows="8" formControlName="additional_features"></textarea></label>
+          <label class="card inner"><h3 class="box-title">Tesoro</h3><textarea rows="6" formControlName="treasure"></textarea></label>
+        </div>
+      </div>
+      }
+
+      <!-- ================= CONJUROS ================= -->
+      @if (tab() === 'conjuros') {
+      <div [formGroup]="sheet">
+        <div class="card inner spell-header" formGroupName="spellcasting">
+          <label>Clase lanzadora <input formControlName="class" list="dl-classes" /></label>
+          <label>Característica para lanzar conjuros
+            <select formControlName="ability">
+              <option value="">—</option>
+              @for (a of abilities; track a.key) { <option [value]="a.key">{{ a.label }}</option> }
+            </select>
+          </label>
+          <div class="pill"><strong>{{ spellDc() ?? '—' }}</strong> CD de salvación</div>
+          <div class="pill"><strong>{{ spellAttack() === null ? '—' : signed(spellAttack()!) }}</strong> Bonif. de ataque</div>
+        </div>
+
+        <div class="spell-grid" formGroupName="spellcasting">
+          @for (lvl of spellLevels; track lvl) {
+            <div class="card inner spell-level">
+              <header>
+                <span class="lvl-num">{{ lvl }}</span>
+                <h3 class="box-title">{{ lvl === 0 ? 'Trucos' : 'Nivel ' + lvl }}</h3>
+                @if (lvl > 0) {
+                  <div class="slots" formArrayName="slots">
+                    <ng-container [formGroupName]="lvl - 1">
+                      <label>Espacios <input class="mini" type="number" min="0" max="20" formControlName="total" /></label>
+                      <label>Gastados <input class="mini" type="number" min="0" max="20" formControlName="used" /></label>
+                    </ng-container>
+                  </div>
+                }
+              </header>
+              <ul class="spell-list" formArrayName="spells">
+                @for (i of spellsByLevel()[lvl]; track i) {
+                  <li [formGroupName]="i">
+                    @if (lvl > 0) {
+                      <input type="checkbox" formControlName="prepared" title="Preparado" aria-label="Preparado" />
+                    }
+                    <input formControlName="name" placeholder="Nombre del conjuro" />
+                    @if (editable()) { <button type="button" class="icon-btn" (click)="removeSpell(i)" aria-label="Quitar conjuro">✕</button> }
+                  </li>
+                }
+              </ul>
+              @if (editable()) { <button type="button" class="btn ghost small" (click)="addSpell(lvl)">+ Añadir</button> }
+            </div>
+          }
+        </div>
+      </div>
+      }
+    </div>
+  </div>
+</form>
+
+@if (cropperOpen()) {
+  <app-avatar-cropper (done)="onAvatarCropped($event)" (cancel)="cropperOpen.set(false)" />
+}
+}

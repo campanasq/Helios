@@ -38,6 +38,7 @@ SUPERADMIN_PASSWORD=una-contraseña-segura
 cd backend
 composer install
 php artisan key:generate
+php artisan storage:link     # necesario para servir los retratos
 php artisan migrate --seed   # crea tablas + usuario superadmin
 php artisan serve            # http://localhost:8000
 ```
@@ -61,6 +62,7 @@ La URL de la API se configura en `frontend/src/environments/environment.ts`.
 |---|:-:|:-:|:-:|:-:|:-:|
 | Pantalla de espera | ✓ | | | | |
 | Mis Personajes (CRUD propio) | | ✓ | ✓ | | |
+| Galería de héroes (datos públicos) | | ✓ | ✓ | | |
 | Misiones (ver) | | ✓ | ✓ | | |
 | Misiones (crear/editar/borrar) | | | ✓ | | |
 | Personajes de los usuarios | | | ✓ | | |
@@ -80,6 +82,8 @@ La URL de la API se configura en `frontend/src/environments/environment.ts`.
 | POST | `/api/register`, `/api/login` | público |
 | GET/POST | `/api/me`, `/api/logout` | autenticado |
 | CRUD | `/api/characters` | jugador, DM (solo los propios) |
+| POST/DELETE | `/api/characters/{id}/avatar` | dueño (PNG, proporción 2:4) |
+| GET | `/api/gallery` | jugador, DM |
 | GET | `/api/missions` | jugador, DM |
 | POST/PUT/DELETE | `/api/missions` | DM |
 | GET | `/api/all-characters` | DM |

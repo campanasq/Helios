@@ -18,6 +18,7 @@ import { ROLE_LABELS } from '../core/models';
           <a routerLink="/personajes-usuarios" routerLinkActive="active">Personajes de los usuarios</a>
         }
         @if (auth.hasRole('jugador', 'dungeon_master')) {
+          <a routerLink="/galeria" routerLinkActive="active">Galería de héroes</a>
           <a routerLink="/misiones" routerLinkActive="active">Misiones</a>
         }
         @if (auth.isAdmin()) {

@@ -25,7 +25,9 @@ class CharacterController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $character = $request->user()->characters()->create($this->validated($request));
+        $data = $this->validated($request);
+        $data['sheet'] ??= [];
+        $character = $request->user()->characters()->create($data);
         return response()->json($character, 201);
     }
 
@@ -49,6 +51,62 @@ class CharacterController extends Controller
         return response()->json(null, 204);
     }
 
+    /**
+     * Galería de héroes: todos los personajes con retrato, de todos los jugadores.
+     * Solo datos públicos (la hoja completa sigue siendo privada).
+     */
+    public function gallery(): JsonResponse
+    {
+        $characters = Character::query()
+            ->whereNotNull('avatar_path')
+            ->with('user:id,name')
+            ->orderByDesc('level')
+            ->orderBy('name')
+            ->get([
+                'id', 'user_id', 'name', 'race', 'class', 'level', 'alignment', 'background',
+                'strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
+                'hit_points', 'armor_class', 'avatar_path',
+            ]);
+
+        return response()->json([
+            'characters' => $characters,
+            'without_portrait' => Character::whereNull('avatar_path')->count(),
+        ]);
+    }
+
+    /** Sube el avatar: PNG (idealmente con fondo transparente) en proporción 2:4. */
+    public function uploadAvatar(Request $request, Character $character): JsonResponse
+    {
+        $this->authorizeOwner($request, $character);
+
+        $request->validate([
+            'avatar' => [
+                'required', 'image', 'mimes:png', 'max:8192',
+                'dimensions:ratio=1/2,min_width=160,max_width=2000',
+            ],
+        ], [
+            'avatar.mimes' => 'El retrato debe ser una imagen PNG.',
+            'avatar.dimensions' => 'La imagen debe tener proporción 2:4 (vertical, entre 160 y 2000 px de ancho).',
+        ]);
+
+        $character->deleteAvatarFile();
+        $character->avatar_path = $request->file('avatar')->store('avatars', 'public');
+        $character->save();
+
+        return response()->json($character);
+    }
+
+    public function deleteAvatar(Request $request, Character $character): JsonResponse
+    {
+        $this->authorizeOwner($request, $character);
+
+        $character->deleteAvatarFile();
+        $character->avatar_path = null;
+        $character->save();
+
+        return response()->json($character);
+    }
+
     private function validated(Request $request): array
     {
         $stat = ['required', 'integer', 'min:1', 'max:30'];
@@ -69,6 +127,8 @@ class CharacterController extends Controller
             'hit_points' => ['required', 'integer', 'min:1', 'max:999'],
             'armor_class' => ['required', 'integer', 'min:1', 'max:40'],
             'backstory' => ['nullable', 'string', 'max:5000'],
+            // El contenido se normaliza en App\Support\CharacterSheet
+            'sheet' => ['nullable', 'array'],
         ]);
     }
 

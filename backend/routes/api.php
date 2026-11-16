@@ -18,6 +18,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // Jugador + Dungeon Master
     Route::middleware('role:jugador,dungeon_master')->group(function () {
         Route::apiResource('characters', CharacterController::class);
+        Route::post('/characters/{character}/avatar', [CharacterController::class, 'uploadAvatar']);
+        Route::delete('/characters/{character}/avatar', [CharacterController::class, 'deleteAvatar']);
+        Route::get('/gallery', [CharacterController::class, 'gallery']);
         Route::get('/missions', [MissionController::class, 'index']);
         Route::get('/missions/{mission}', [MissionController::class, 'show']);
     });

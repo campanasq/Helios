@@ -1,3 +1,7 @@
+@use 'styles/sheet';
+@use 'styles/parchment';
+@use 'styles/gallery';
+
 :root {
   --bg: #14110f;
   --bg-2: #1d1916;
@@ -19,7 +23,7 @@
 html, body { margin: 0; }
 body {
   font-family: 'Inter', system-ui, sans-serif;
-  background: radial-gradient(ellipse at top, #231c16 0%, var(--bg) 60%) fixed;
+  background: var(--bg) radial-gradient(ellipse at top, #231c16 0%, var(--bg) 60%) fixed;
   color: var(--text);
   min-height: 100vh;
   font-size: 15px;
@@ -52,6 +56,14 @@ h1, h2, h3 { margin: 0; }
 .user-info { display: flex; flex-direction: column; align-items: flex-end; gap: .2rem; }
 .user-name { font-weight: 600; }
 
+@media (max-width: 760px) {
+  .topbar { gap: .5rem 1rem; padding: .6rem 1rem; }
+  .user-box { margin-left: auto; }
+  .user-info .badges { display: none; }
+  .tabs { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tabs a { white-space: nowrap; }
+}
+
 .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
 .page-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
 
@@ -71,8 +83,10 @@ textarea { resize: vertical; }
 .search { max-width: 340px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
 @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
+.tiny { font-size: .72rem; margin: .4rem 0 0; }
 
 /* ---------- Buttons ---------- */
+a.btn { text-decoration: none; display: inline-block; }
 .btn {
   font: inherit; font-weight: 600; border: 1px solid transparent; border-radius: 8px;
   padding: .6rem 1.1rem; cursor: pointer; transition: filter .15s, background .15s;
@@ -130,15 +144,25 @@ textarea { resize: vertical; }
 .big-icon { font-size: 3rem; }
 
 /* ---------- Characters ---------- */
+.cards { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+@media (max-width: 420px) { .cards { grid-template-columns: 1fr; } }
 .char-card {
-  display: flex; flex-direction: column; gap: .5rem;
+  display: flex; gap: 1rem; padding: 1rem;
+  .char-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .4rem; }
   header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
-  h3 { font-family: 'Cinzel', serif; color: var(--gold-2); font-size: 1.15rem; }
+  h3 { font-family: 'Cinzel', serif; font-size: 1.15rem; a { color: var(--gold-2); text-decoration: none; } }
   p { margin: 0; }
   .actions { margin-top: auto; padding-top: .5rem; }
 }
+/* Retrato 2:4 en miniatura */
+.char-portrait {
+  flex: 0 0 76px; aspect-ratio: 1 / 2; align-self: flex-start; border-radius: 8px; overflow: hidden;
+  background: var(--bg-2); border: 1px solid var(--border); display: grid; place-items: center;
+  font-size: 1.8rem; text-decoration: none;
+  img { width: 100%; height: 100%; object-fit: cover; display: block; }
+}
 .owner { font-size: .85rem; color: var(--muted); }
-.stat-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: .3rem; margin: .4rem 0; }
+.stat-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: .3rem; margin: .2rem 0; }
 .stat {
   display: flex; flex-direction: column; align-items: center; background: var(--bg-2);
   border: 1px solid var(--border); border-radius: 8px; padding: .3rem 0;
@@ -147,10 +171,6 @@ textarea { resize: vertical; }
   small { font-size: .7rem; color: var(--gold); }
 }
 .vitals { font-size: .9rem; }
-.backstory { font-size: .85rem; color: var(--muted); font-style: italic; white-space: pre-line; max-height: 6em; overflow: hidden; }
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; margin-bottom: .9rem; }
-.stat-input input { text-align: center; }
-@media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
 
 /* ---------- Missions ---------- */
 .mission-list { display: flex; flex-direction: column; gap: 1rem; }
