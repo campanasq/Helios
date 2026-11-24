@@ -413,4 +413,30 @@ class CharacterSheetTest extends TestCase
         Sanctum::actingAs($dm->fresh());
         $this->postJson("/api/characters/$id/wallet/adjust", ['gp' => 5])->assertStatus(422);
     }
+
+    public function test_playable_character_class_cannot_be_changed_after_creation(): void
+    {
+        $this->player();
+        $id = $this->postJson('/api/characters', [...$this->base, 'class' => 'Artífice'])
+            ->assertCreated()
+            ->assertJsonPath('class', 'Artífice')
+            ->json('id');
+
+        // Intentar cambiar la clase en un PJ jugable conserva la original
+        $this->putJson("/api/characters/$id", [...$this->base, 'class' => 'Bárbaro'])
+            ->assertOk()
+            ->assertJsonPath('class', 'Artífice');
+
+        // En un NPC el DM sí puede editar la clase libremente
+        $dm = User::factory()->create();
+        $dm->forceFill(['role' => Role::DungeonMaster])->save();
+        Sanctum::actingAs($dm->fresh());
+
+        $npcId = $this->postJson('/api/characters', [...$this->base, 'name' => 'Gólem', 'class' => 'Guerrero', 'is_npc' => true])
+            ->assertCreated()->json('id');
+
+        $this->putJson("/api/characters/$npcId", [...$this->base, 'name' => 'Gólem', 'class' => 'Artífice'])
+            ->assertOk()
+            ->assertJsonPath('class', 'Artífice');
+    }
 }

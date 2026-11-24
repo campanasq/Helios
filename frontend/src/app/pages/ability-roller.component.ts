@@ -73,7 +73,7 @@ function roll4d6DropLowest(id: number): AbilityRoll {
           [attr.aria-pressed]="soundEnabled()">
           {{ soundEnabled() ? '🔊 Sonido activado' : '🔇 Sonido silenciado' }}
         </button>
-        <span class="badge gold">Paso 1 de 2 · Tiradas de características</span>
+        <span class="badge gold">Paso 1 de 3 · Tiradas de características</span>
       </div>
 
       <section class="card parchment roller-card">
@@ -281,7 +281,7 @@ function roll4d6DropLowest(id: number): AbilityRoll {
               Después vas a poder ajustar estos puntajes en la hoja si tu raza o nivel suma bonificadores.
             </p>
             <button type="button" class="btn primary" [disabled]="!allAssigned() || rolling()" (click)="confirm()">
-              Continuar a la hoja del personaje →
+              Continuar a elegir clase →
             </button>
           </footer>
         }

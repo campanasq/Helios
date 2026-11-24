@@ -68,6 +68,10 @@ class CharacterController extends Controller
         $this->authorizeOwner($request, $character);
         $this->ensureAlive($character);
         $data = $this->validated($request);
+        // En personajes jugables la clase se define al crearlo y no puede cambiarse luego
+        if (! $character->is_npc) {
+            $data['class'] = $character->class;
+        }
         // El dinero no se edita desde el formulario general de la hoja
         if (array_key_exists('sheet', $data) && is_array($data['sheet'])) {
             $data['sheet']['money'] = $character->sheet['money'];

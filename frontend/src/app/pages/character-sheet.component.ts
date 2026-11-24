@@ -11,10 +11,12 @@ import {
   ABILITIES, ABILITY_SHORT, ALIGNMENTS, Ability, BACKGROUNDS, CLASSES, COINS, CoinKey, RACES, SKILLS,
   formatGold, goldTotal, modifier, proficiencyBonus, signed,
 } from '../core/dnd';
+import { DndClassInfo } from '../core/dnd-classes';
 import { Character, CharacterImage, GALLERY_VISIBILITY_FIELDS, defaultGalleryVisibility } from '../core/models';
 import { blobToDataUrl, clearDraft, dataUrlToBlob, draftKey, readDraft, writeDraft } from '../core/drafts';
 import { AbilityRollerComponent, RolledStats } from './ability-roller.component';
 import { AvatarCropperComponent } from './avatar-cropper.component';
+import { ClassPickerComponent } from './class-picker.component';
 
 type Tab = 'hoja' | 'trasfondo' | 'conjuros' | 'imagenes';
 type AttackGroup = FormGroup<{ name: FormControl<string>; bonus: FormControl<string>; damage: FormControl<string> }>;
@@ -23,7 +25,7 @@ type SpellGroup = FormGroup<{ level: FormControl<number>; name: FormControl<stri
 
 @Component({
   selector: 'app-character-sheet',
-  imports: [ReactiveFormsModule, RouterLink, AvatarCropperComponent, AbilityRollerComponent],
+  imports: [ReactiveFormsModule, RouterLink, AvatarCropperComponent, AbilityRollerComponent, ClassPickerComponent],
   templateUrl: './character-sheet.component.html',
 })
 export class CharacterSheetComponent implements OnInit, OnDestroy {
@@ -52,9 +54,12 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
   isOwner = computed(() => !this.character() || this.character()!.user_id === this.auth.user()?.id);
   isDm = computed(() => this.auth.hasRole('dungeon_master'));
   isNpc = signal(false);
+  /** En personajes jugables la clase se elige en el Paso 2 y queda bloqueada en la hoja. */
+  classLocked = computed(() => !this.isNpc());
 
-  /** Paso de creación: 'roller' (tirador 4d6) → 'sheet' (hoja de personaje). */
-  step = signal<'roller' | 'sheet'>('sheet');
+  /** Pasos de creación: 'roller' (tirador 4d6) → 'class' (selector de clase) → 'sheet' (hoja). */
+  step = signal<'roller' | 'class' | 'sheet'>('sheet');
+  rolledStats = signal<RolledStats | null>(null);
   /** Si el usuario (jugador o DM) ya tiene un PJ jugable vivo, bloquea crear otro PJ principal. */
   aliveCharacter = signal<Character | null>(null);
 
@@ -168,10 +173,22 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
           }
 
           const startNewPlayable = () => {
-            const hasDraft = !!readDraft<FormValue>(this.storageKey);
-            if (hasDraft) {
+            const draft = readDraft<FormValue>(this.storageKey);
+            if (draft) {
               this.restoreDraft();
-              this.step.set('sheet');
+              if (draft.value?.class) {
+                this.step.set('sheet');
+              } else {
+                this.rolledStats.set({
+                  strength: draft.value.strength,
+                  dexterity: draft.value.dexterity,
+                  constitution: draft.value.constitution,
+                  intelligence: draft.value.intelligence,
+                  wisdom: draft.value.wisdom,
+                  charisma: draft.value.charisma,
+                });
+                this.step.set('class');
+              }
             } else {
               this.step.set('roller');
             }
@@ -294,7 +311,30 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
   }
 
   onRollsCompleted(stats: RolledStats) {
+    this.rolledStats.set(stats);
     this.form.patchValue(stats);
+    this.form.markAsDirty();
+    this.v.set(this.form.getRawValue());
+    this.saveDraft();
+    this.step.set('class');
+  }
+
+  onClassCompleted(cls: DndClassInfo) {
+    const savingThrows = Object.fromEntries(
+      ABILITIES.map((a) => [a.key, cls.savingThrows.includes(a.key)]),
+    ) as Record<Ability, boolean>;
+
+    this.form.patchValue({
+      class: cls.name,
+      sheet: {
+        hit_dice: cls.hitDice,
+        saving_throws: savingThrows,
+        spellcasting: {
+          class: cls.spellAbility ? cls.name : '',
+          ability: cls.spellAbility,
+        },
+      },
+    });
     this.form.markAsDirty();
     this.v.set(this.form.getRawValue());
     this.saveDraft();

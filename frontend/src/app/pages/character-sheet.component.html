@@ -18,6 +18,8 @@
   </div>
 } @else if (step() === 'roller') {
   <app-ability-roller (completed)="onRollsCompleted($event)" />
+} @else if (step() === 'class') {
+  <app-class-picker [stats]="rolledStats()" (completed)="onClassCompleted($event)" />
 } @else {
 <form class="sheet" [formGroup]="form" (ngSubmit)="save()" [class.readonly]="!editable()" [class.is-dead]="!isNpc() && character()?.is_dead">
 
@@ -109,8 +111,12 @@
           <input formControlName="name" placeholder="Nombre" />
         </label>
         <div class="header-grid">
-          <label>Clase
-            <input formControlName="class" list="dl-classes" />
+          <label>Clase @if (classLocked()) { <small class="muted">(fija)</small> }
+            @if (classLocked()) {
+              <input [value]="v().class" readonly tabindex="-1" class="locked-field" title="La clase se define al crear el personaje y no puede editarse" />
+            } @else {
+              <input formControlName="class" list="dl-classes" />
+            }
           </label>
           <label>Nivel <input type="number" min="1" max="20" formControlName="level" /></label>
           <label>Trasfondo <input formControlName="background" list="dl-backgrounds" /></label>

@@ -40,7 +40,7 @@ export const SKILLS: { key: Skill; label: string; ability: Ability }[] = [
 ];
 
 export const RACES = ['Humano', 'Elfo', 'Enano', 'Mediano', 'Gnomo', 'Semielfo', 'Semiorco', 'Tiefling', 'Dracónido'];
-export const CLASSES = ['Bárbaro', 'Bardo', 'Brujo', 'Clérigo', 'Druida', 'Explorador', 'Guerrero', 'Hechicero', 'Mago', 'Monje', 'Paladín', 'Pícaro'];
+export const CLASSES = ['Artífice', 'Bárbaro', 'Bardo', 'Brujo', 'Clérigo', 'Druida', 'Explorador', 'Guerrero', 'Hechicero', 'Mago', 'Monje', 'Paladín', 'Pícaro'];
 export const ALIGNMENTS = [
   'Legal bueno', 'Neutral bueno', 'Caótico bueno',
   'Legal neutral', 'Neutral', 'Caótico neutral',
