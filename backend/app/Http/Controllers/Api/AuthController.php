@@ -26,7 +26,7 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $user->createToken('auth')->plainTextToken,
-            'user' => $user,
+            'user' => $user->append('gold_total'),
         ], 201);
     }
 
@@ -49,13 +49,13 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $user->createToken('auth')->plainTextToken,
-            'user' => $user,
+            'user' => $user->append('gold_total'),
         ]);
     }
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json($request->user());
+        return response()->json($request->user()->append('gold_total'));
     }
 
     public function logout(Request $request): JsonResponse

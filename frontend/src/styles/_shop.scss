@@ -1,0 +1,381 @@
+/* ================= Tienda Ambulante (Madera Tallada + RPG Maker / Undertale) ================= */
+
+.shop-page {
+  display: flex; flex-direction: column; gap: 1.25rem;
+}
+
+/* ---- Cartel colgante de madera ---- */
+.wood-sign-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: .85rem;
+}
+
+.wood-chains {
+  width: min(460px, 76%); display: flex; justify-content: space-between;
+  height: 18px; margin-bottom: -10px; position: relative; z-index: 1;
+  span {
+    width: 6px; height: 100%; border-radius: 3px;
+    background: repeating-linear-gradient(180deg, #8a6c3e 0 4px, #3b2c1a 4px 7px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .6);
+  }
+}
+
+.wood-sign {
+  position: relative;
+  width: min(680px, 100%);
+  text-align: center;
+  padding: 1.15rem 2.2rem 1.2rem;
+  border-radius: 12px;
+  border: 3px solid #6f4926;
+  background:
+    repeating-linear-gradient(
+      3deg,
+      rgba(255, 215, 160, .03) 0px,
+      rgba(255, 215, 160, .03) 2px,
+      transparent 2px,
+      transparent 11px
+    ),
+    linear-gradient(180deg, #52321b 0%, #3a2110 55%, #2b170a 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(233, 196, 106, .35),
+    inset 0 -4px 12px rgba(0, 0, 0, .65),
+    0 14px 28px rgba(0, 0, 0, .55);
+  animation: sign-sway 7s ease-in-out infinite;
+  transform-origin: top center;
+
+  .nail {
+    position: absolute; width: 10px; height: 10px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #f0d080, #6d4c1c);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .8);
+    &.tl { top: 10px; left: 12px; } &.tr { top: 10px; right: 12px; }
+    &.bl { bottom: 10px; left: 12px; } &.br { bottom: 10px; right: 12px; }
+  }
+}
+
+@keyframes sign-sway {
+  0%, 100% { transform: rotate(-.35deg); }
+  50% { transform: rotate(.35deg); }
+}
+
+.sign-kicker {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: 1.8px;
+  color: #e9c46a; font-weight: 700; margin-bottom: .25rem;
+}
+
+.sign-title {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(1.4rem, 3vw, 2.05rem);
+  color: #f8e4b0;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, .85), 0 0 18px rgba(212, 166, 74, .25);
+  margin: 0;
+}
+
+.sign-sub {
+  margin: .2rem 0 0; font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 1.1rem; font-style: italic; color: #d4bfa0;
+}
+
+.shop-topbar-meta {
+  width: 100%; display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap;
+}
+
+.purse-pill {
+  display: inline-flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  padding: .45rem .85rem; border-radius: 999px;
+  background: var(--surface); border: 1px solid rgba(212, 166, 74, .4);
+  font-size: .88rem;
+  strong { font-family: 'Cinzel', serif; color: var(--gold-2); }
+}
+
+/* ---- Escenario principal: Mercader + Estantería ---- */
+.shop-booth {
+  display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 1.15rem; align-items: stretch;
+}
+@media (max-width: 900px) { .shop-booth { grid-template-columns: 1fr; } }
+
+.merchant-stage {
+  position: relative;
+  border-radius: 14px;
+  border: 2px solid #5c3c1e;
+  overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-height: 390px;
+  background:
+    radial-gradient(ellipse 65% 55% at 50% 18%, rgba(246, 189, 96, .22), transparent 72%),
+    linear-gradient(180deg, #22170f 0%, #160f0a 75%, #2b190d 100%);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, .7), 0 12px 26px rgba(0, 0, 0, .45);
+}
+
+.lantern {
+  position: absolute; top: 10px; right: 16px; width: 16px; height: 22px; border-radius: 4px;
+  background: radial-gradient(circle, #fff3c2 20%, #e59b38 75%);
+  box-shadow: 0 0 26px 8px rgba(245, 178, 72, .45);
+  animation: lantern-flicker 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes lantern-flicker {
+  0%, 100% { opacity: .95; transform: scale(1); }
+  45% { opacity: .82; transform: scale(.96); }
+  70% { opacity: 1; transform: scale(1.03); }
+}
+
+.merchant-trigger {
+  flex: 1; width: 100%; border: none; background: none; padding: 1.1rem 1rem .4rem;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: .35rem;
+  cursor: pointer; position: relative;
+  &:hover .merchant-hint { opacity: 1; transform: translateY(0); }
+}
+
+.merchant-svg {
+  width: 240px; max-width: 100%; height: auto; display: block;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .6));
+  transition: transform .18s;
+  &.speaking { animation: merchant-talk .26s ease-in-out infinite alternate; }
+  &.pose-angry { animation: merchant-shake .3s ease-in-out 2; }
+  &.pose-excited { animation: merchant-bounce .42s ease-in-out 2; }
+}
+
+.merchant-img {
+  max-height: 290px; max-width: 100%; object-fit: contain; display: block;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .65));
+  &.speaking { animation: merchant-talk .26s ease-in-out infinite alternate; }
+}
+
+@keyframes merchant-talk {
+  from { transform: translateY(0); }
+  to { transform: translateY(-4px) scale(1.01); }
+}
+@keyframes merchant-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px) rotate(-1deg); }
+  75% { transform: translateX(5px) rotate(1deg); }
+}
+@keyframes merchant-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.merchant-hint {
+  font-size: .74rem; color: var(--gold-2); background: rgba(20, 14, 9, .82);
+  border: 1px solid rgba(212, 166, 74, .4); border-radius: 999px;
+  padding: .2rem .65rem; opacity: .78; transition: opacity .2s, transform .2s;
+}
+
+.merchant-counter-ledge {
+  padding: .65rem 1rem;
+  background: linear-gradient(180deg, #57361d, #36200f);
+  border-top: 3px solid #7d522c;
+  display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+}
+
+.merchant-nameplate {
+  font-family: 'Cinzel', serif; font-weight: 700; color: #f6e0aa; font-size: .95rem;
+}
+
+.pose-chip {
+  font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--gold-2); background: rgba(20, 14, 9, .65);
+  border: 1px solid rgba(212, 166, 74, .4); border-radius: 999px; padding: .15rem .55rem;
+}
+
+/* ---- Estantería de madera ---- */
+.shelf-panel {
+  border-radius: 14px; padding: 1.15rem 1.25rem;
+  border: 2px solid #593a1e;
+  background:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, .14) 0 2px, transparent 2px 175px),
+    linear-gradient(180deg, #271b13 0%, #1c130d 100%);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, .65), 0 12px 26px rgba(0, 0, 0, .4);
+  display: flex; flex-direction: column; gap: 1rem;
+}
+
+.shelf-header {
+  display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+  border-bottom: 2px solid rgba(212, 166, 74, .22); padding-bottom: .6rem;
+  .title { font-size: 1.25rem; }
+}
+
+.shelf-empty {
+  flex: 1; display: grid; place-items: center; text-align: center; padding: 2.5rem 1rem; color: var(--muted);
+  span { font-size: 2.4rem; }
+}
+
+.shelf-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: .9rem;
+}
+
+.shelf-item {
+  display: flex; flex-direction: column; align-items: center; gap: .45rem;
+  padding: .75rem .65rem .7rem;
+  border-radius: 10px;
+  border: 1px solid #563a21;
+  border-bottom: 5px solid #4a2e17;
+  background: linear-gradient(180deg, #2d2017 0%, #20160f 100%);
+  color: var(--text); cursor: pointer; text-align: center;
+  transition: transform .16s, border-color .16s, box-shadow .16s;
+
+  &:hover, &:focus-visible, &.inspected {
+    transform: translateY(-4px);
+    border-color: var(--gold-2);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, .5), 0 0 0 2px rgba(233, 196, 106, .22);
+    outline: none;
+  }
+
+  &.unaffordable .item-price { color: #f0a19c; border-color: rgba(181, 65, 58, .5); }
+}
+
+.item-art {
+  width: 96px; height: 96px; border-radius: 10px;
+  background: radial-gradient(circle, rgba(233, 196, 106, .14), rgba(15, 10, 7, .75));
+  border: 1px solid rgba(212, 166, 74, .22);
+  display: grid; place-items: center; overflow: hidden; padding: .35rem;
+  img { width: 100%; height: 100%; object-fit: contain; display: block; }
+}
+.item-fallback { font-size: 2.5rem; }
+
+.item-name {
+  font-family: 'Cinzel', serif; font-size: .86rem; font-weight: 700; color: #f4e4be;
+  line-height: 1.25;
+}
+
+.item-price {
+  margin-top: auto;
+  font-size: .82rem; font-weight: 700; color: var(--gold-2);
+  background: rgba(18, 12, 8, .85); border: 1px solid rgba(212, 166, 74, .45);
+  border-radius: 999px; padding: .16rem .65rem;
+}
+
+/* ---- Caja de diálogo estilo RPG Maker / Undertale ---- */
+.rpg-dialogue {
+  position: relative;
+  border-radius: 12px;
+  padding: 1rem 1.35rem .85rem;
+  background: linear-gradient(180deg, #17120e 0%, #0f0b08 100%);
+  border: 3px solid #d4a64a;
+  box-shadow:
+    inset 0 0 0 3px #2b1c10,
+    inset 0 0 28px rgba(0, 0, 0, .85),
+    0 12px 28px rgba(0, 0, 0, .55);
+  cursor: pointer;
+  user-select: none;
+  min-height: 132px;
+  display: flex; flex-direction: column; gap: .45rem;
+}
+
+.rpg-dialogue-head {
+  display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap;
+}
+
+.rpg-speaker { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+.rpg-speaker-name {
+  font-family: 'Cinzel', serif; font-weight: 700; color: var(--gold-2); font-size: 1rem;
+  letter-spacing: .5px;
+}
+
+.rpg-text {
+  margin: 0;
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 1.04rem; line-height: 1.55; color: #f6efe2;
+  min-height: 3.1em;
+}
+
+.rpg-asterisk { color: var(--gold-2); font-weight: 700; }
+
+.rpg-cursor {
+  display: inline-block; margin-left: .4rem; color: var(--gold-2); font-size: .85rem;
+  animation: rpg-blink .85s steps(2, start) infinite;
+}
+@keyframes rpg-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+.rpg-hint {
+  align-self: flex-end; font-size: .7rem; color: var(--muted);
+}
+
+/* ---- Modal de compra ---- */
+.buy-modal-top {
+  display: flex; gap: 1rem; align-items: flex-start;
+  @media (max-width: 520px) { flex-direction: column; align-items: center; text-align: center; }
+}
+.buy-modal-art {
+  flex: 0 0 100px; width: 100px; height: 100px; border-radius: 10px;
+  background: var(--bg-2); border: 1px solid rgba(212, 166, 74, .4);
+  display: grid; place-items: center; overflow: hidden; padding: .4rem;
+  img { width: 100%; height: 100%; object-fit: contain; }
+}
+.buy-balance {
+  display: flex; flex-direction: column; gap: .2rem;
+  padding: .65rem .85rem; border-radius: 8px;
+  background: var(--bg-2); border: 1px solid var(--border); font-size: .9rem;
+}
+
+/* ---- Panel de Gestión DM ---- */
+.dm-shop-panel {
+  display: flex; flex-direction: column; gap: 1rem;
+  border-color: rgba(139, 95, 181, .5);
+}
+
+.dm-panel-head {
+  display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap;
+}
+
+.dm-two-cols {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start;
+}
+@media (max-width: 900px) { .dm-two-cols { grid-template-columns: 1fr; } }
+
+.dm-form { display: flex; flex-direction: column; gap: .75rem; &.editing-highlight { border-color: var(--gold-2); box-shadow: 0 0 0 2px rgba(212, 166, 74, .2); } }
+.dm-form-head {
+  display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap;
+  .subtitle { margin: 0; }
+}
+
+.file-row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+
+.dm-list {
+  list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .55rem;
+  li {
+    display: flex; align-items: center; gap: .65rem; padding: .55rem .65rem;
+    border-radius: 8px; background: var(--bg-2); border: 1px solid var(--border);
+    &.active-row { border-color: rgba(212, 166, 74, .6); }
+  }
+}
+
+.dm-item-thumb {
+  width: 40px; height: 40px; border-radius: 6px; background: var(--surface);
+  border: 1px solid var(--border); display: grid; place-items: center; overflow: hidden; flex: 0 0 40px;
+  img { width: 100%; height: 100%; object-fit: contain; }
+}
+
+.dm-item-info {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .15rem;
+  strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+.dm-dialogues-box { display: flex; flex-direction: column; gap: .5rem; }
+.dm-dialogue-rows { display: flex; flex-direction: column; gap: .4rem; }
+.dm-dialogue-row {
+  display: grid; grid-template-columns: 155px 1fr auto; gap: .4rem; align-items: center;
+  select, input { padding: .35rem .5rem; font-size: .84rem; }
+}
+@media (max-width: 560px) { .dm-dialogue-row { grid-template-columns: 1fr auto; } }
+
+.dm-poses-box {
+  border-top: 1px solid var(--border); padding-top: .85rem; margin-top: .25rem;
+}
+
+.dm-poses-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: .65rem;
+}
+@media (max-width: 600px) { .dm-poses-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.dm-pose-card {
+  display: flex; flex-direction: column; gap: .35rem; align-items: center;
+  padding: .5rem; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--border);
+}
+
+.dm-pose-preview {
+  width: 100%; aspect-ratio: 1 / 1; display: grid; place-items: center; overflow: hidden;
+  border: 1px solid var(--border);
+  img { width: 100%; height: 100%; object-fit: contain; }
+}
+
+.dm-pose-actions { display: flex; gap: .3rem; align-items: center; }

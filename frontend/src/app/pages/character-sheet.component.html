@@ -1,24 +1,53 @@
 @if (loading()) {
   <p class="muted">Cargando hoja…</p>
+} @else if (aliveCharacter(); as alive) {
+  <div class="card empty">
+    <div class="big-icon">🛡️</div>
+    <h2 class="title">Ya tenés un personaje principal vivo</h2>
+    <p class="muted">
+      Solo podés tener un personaje jugable vivo a la vez. Tu héroe activo es <strong>{{ alive.name }}</strong>
+      ({{ alive.race }} · {{ alive.class }} · Nv. {{ alive.level }}).
+    </p>
+    <div class="actions" style="justify-content: center;">
+      <a class="btn ghost" routerLink="/mis-personajes">← Volver a Mis Personajes</a>
+      <a class="btn primary" [routerLink]="['/personajes', alive.id]">Abrir hoja de {{ alive.name }}</a>
+      @if (isDm()) {
+        <a class="btn ghost" routerLink="/personajes/nuevo" [queryParams]="{ tipo: 'npc' }">+ Crear NPC</a>
+      }
+    </div>
+  </div>
+} @else if (step() === 'roller') {
+  <app-ability-roller (completed)="onRollsCompleted($event)" />
 } @else {
-<form class="sheet" [formGroup]="form" (ngSubmit)="save()" [class.readonly]="!editable()">
+<form class="sheet" [formGroup]="form" (ngSubmit)="save()" [class.readonly]="!editable()" [class.is-dead]="!isNpc() && character()?.is_dead">
 
   <!-- Barra superior -->
   <div class="sheet-toolbar">
-    <a class="btn ghost small" [routerLink]="editable() ? '/mis-personajes' : '/personajes-usuarios'">← Volver</a>
-    @if (!editable() && character()?.user) {
+    <a class="btn ghost small" [routerLink]="isOwner() ? '/mis-personajes' : '/personajes-usuarios'">← Volver</a>
+    @if (isNpc()) {
+      <span class="badge npc">NPC</span>
+    }
+    @if (!isNpc() && character()?.is_dead) {
+      <span class="badge dead">💀 Muerto · solo lectura</span>
+    } @else if (!editable() && character()?.user) {
       <span class="muted small">Hoja de <strong>{{ character()!.user!.name }}</strong> · solo lectura</span>
     }
     <div class="spacer"></div>
     @if (editable()) {
       @if (form.dirty) { <span class="muted small">Cambios sin guardar · borrador guardado en este navegador</span> }
       <button class="btn primary" type="submit" [disabled]="saving()">
-        {{ saving() ? 'Guardando…' : character() ? 'Guardar cambios' : 'Crear personaje' }}
+        {{ saving() ? 'Guardando…' : character() ? 'Guardar cambios' : isNpc() ? 'Crear NPC' : 'Crear personaje' }}
       </button>
     }
   </div>
 
   @if (message()) { <div class="alert" [class.error]="isError()">{{ message() }}</div> }
+
+  @if (!isNpc() && character()?.is_dead) {
+    <div class="dead-banner">
+      <span>💀 <strong>{{ character()!.name }}</strong> ha muerto definitivamente. Su hoja se conserva en modo solo lectura.</span>
+    </div>
+  }
 
   @if (draftRestoredAt(); as at) {
     <div class="alert draft-alert">
@@ -42,7 +71,7 @@
       </div>
       @if (editable()) {
         <div class="portrait-actions">
-          <button type="button" class="btn ghost small" (click)="cropperOpen.set(true)">{{ avatarUrl() ? 'Cambiar' : 'Subir retrato' }}</button>
+          <button type="button" class="btn ghost small" (click)="openCropper('avatar')">{{ avatarUrl() ? 'Cambiar' : 'Subir retrato' }}</button>
           @if (avatarUrl()) { <button type="button" class="btn danger small" (click)="removeAvatar()">Quitar</button> }
         </div>
       }
@@ -52,6 +81,23 @@
         <div class="vital"><span>PG</span><strong>{{ v().sheet.hp_current }}/{{ v().hit_points }}</strong></div>
         <div class="vital"><span>Init.</span><strong>{{ signed(initiative()) }}</strong></div>
       </div>
+
+      @if (isOwner()) {
+        <div class="card inner gallery-vis" formGroupName="gallery_visibility">
+          <h3 class="box-title">Galería de personajes</h3>
+          <p class="muted tiny">Elegí qué información revelar públicamente:</p>
+          <ul class="vis-list">
+            @for (f of visibilityFields; track f.key) {
+              <li>
+                <label>
+                  <input type="checkbox" [formControlName]="f.key" />
+                  <span>{{ f.label }}</span>
+                </label>
+              </li>
+            }
+          </ul>
+        </div>
+      }
     </aside>
 
     <!-- ===== Contenido de la hoja ===== -->
@@ -88,6 +134,9 @@
         <button type="button" [class.active]="tab() === 'hoja'" (click)="tab.set('hoja')">Hoja</button>
         <button type="button" [class.active]="tab() === 'trasfondo'" (click)="tab.set('trasfondo')">Trasfondo</button>
         <button type="button" [class.active]="tab() === 'conjuros'" (click)="tab.set('conjuros')">Conjuros</button>
+        <button type="button" [class.active]="tab() === 'imagenes'" (click)="tab.set('imagenes')">
+          Imágenes @if (totalImagesCount() > 0) { ({{ totalImagesCount() }}) }
+        </button>
       </div>
 
       <!-- ================= HOJA PRINCIPAL ================= -->
@@ -224,13 +273,91 @@
             @if (editable()) { <button type="button" class="btn ghost small" (click)="addAttack()">+ Añadir ataque</button> }
           </div>
 
-          <div class="card inner">
-            <h3 class="box-title">Equipo</h3>
-            <div class="money" formGroupName="money">
+          <div class="card inner wallet-box">
+            <div class="wallet-head">
+              <h3 class="box-title">Contador de Oro</h3>
+              <span class="wallet-total" title="Equivalente total en piezas de oro">
+                🪙 {{ formatGold(characterGoldTotal()) }} PO
+              </span>
+            </div>
+
+            <div class="wallet-coins">
               @for (c of coins; track c.key) {
-                <label class="coin">{{ c.label }} <input type="number" min="0" [formControlName]="c.key" /></label>
+                <div class="wallet-coin coin-{{ c.key }}">
+                  <span class="coin-name">{{ c.name }}</span>
+                  <strong>{{ v().sheet.money[c.key] }}</strong>
+                  <small>{{ c.label }}</small>
+                </div>
               }
             </div>
+
+            @if (walletError()) {
+              <div class="alert error wallet-alert">{{ walletError() }}</div>
+            }
+
+            @if (!character()) {
+              <p class="muted tiny">El personaje comienza con 0 monedas. Un DM podrá otorgar dinero una vez creado.</p>
+            } @else {
+              @if (editable()) {
+                <div class="wallet-section">
+                  <div class="wallet-section-head">
+                    <span class="muted tiny">Cambiar monedas (1 PPT = 10 PO = 100 PP = 1000 PC)</span>
+                    <button type="button" class="btn ghost small" [disabled]="walletBusy()" (click)="compactCoins()">
+                      Compactar
+                    </button>
+                  </div>
+                  <div class="wallet-convert-row">
+                    <input
+                      type="number"
+                      min="1"
+                      [value]="convertAmount()"
+                      (input)="convertAmount.set(+$any($event.target).value)"
+                      aria-label="Cantidad a convertir" />
+                    <select [value]="convertFrom()" (change)="convertFrom.set($any($event.target).value)" aria-label="Moneda origen">
+                      @for (c of coins; track c.key) { <option [value]="c.key">{{ c.name }} ({{ c.label }})</option> }
+                    </select>
+                    <span class="muted">→</span>
+                    <select [value]="convertTo()" (change)="convertTo.set($any($event.target).value)" aria-label="Moneda destino">
+                      @for (c of coins; track c.key) { <option [value]="c.key">{{ c.name }} ({{ c.label }})</option> }
+                    </select>
+                    <button type="button" class="btn ghost small" [disabled]="walletBusy()" (click)="runConvert()">
+                      Cambiar
+                    </button>
+                  </div>
+                </div>
+              }
+
+              @if (canDmAdjustWallet()) {
+                <div class="wallet-section dm-wallet">
+                  <span class="badge role-dungeon_master">Ajustar dinero (DM)</span>
+                  <div class="dm-coin-inputs">
+                    @for (c of coins; track c.key) {
+                      <label>
+                        {{ c.label }}
+                        <input
+                          type="number"
+                          min="0"
+                          [value]="dmAdjust()[c.key]"
+                          (input)="setDmCoin(c.key, $any($event.target).value)"
+                          [attr.aria-label]="'Cantidad de ' + c.name" />
+                      </label>
+                    }
+                  </div>
+                  <div class="wallet-dm-actions">
+                    <button type="button" class="btn primary small" [disabled]="walletBusy()" (click)="applyDmAdjust(1)">
+                      + Dar
+                    </button>
+                    <button type="button" class="btn danger small" [disabled]="walletBusy()" (click)="applyDmAdjust(-1)">
+                      − Quitar
+                    </button>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+
+          <div class="card inner">
+            <h3 class="box-title">Equipo</h3>
             <textarea rows="7" formControlName="equipment" placeholder="Mochila, cuerda de cáñamo (50 pies), raciones (5 días)…"></textarea>
           </div>
         </div>
@@ -319,11 +446,132 @@
         </div>
       </div>
       }
+
+      <!-- ================= IMÁGENES ================= -->
+      @if (tab() === 'imagenes') {
+      <div class="images-tab">
+        <div class="card inner images-header">
+          <div>
+            <h3 class="box-title">Galería de imágenes del personaje</h3>
+            <p class="muted small">
+              Subí hasta 8 imágenes adicionales (PNG 2:4) y elegí cuáles querés mostrar en la
+              <strong>Galería de personajes</strong>. Cuando tenga más de una habilitada, se podrán intercalar con las flechas arriba y abajo.
+            </p>
+          </div>
+          @if (editable() && character()) {
+            <button
+              type="button"
+              class="btn primary small"
+              [disabled]="uploadingImage() || extraImages().length >= 8"
+              (click)="openCropper('extra')">
+              {{ uploadingImage() ? 'Subiendo…' : '+ Añadir imagen (' + extraImages().length + '/8)' }}
+            </button>
+          }
+        </div>
+
+        @if (!character()) {
+          <div class="card inner empty">
+            Primero guardá el personaje para poder agregar imágenes adicionales (podés subir el retrato principal desde la columna izquierda).
+          </div>
+        } @else {
+          <div class="char-images-grid">
+            <!-- Retrato principal -->
+            <div class="card inner char-img-card">
+              <div class="char-img-head">
+                <span class="badge gold">Retrato principal</span>
+              </div>
+              <div class="char-img-preview checkerboard">
+                @if (avatarUrl()) {
+                  <img [src]="avatarUrl()" [alt]="'Retrato principal de ' + (v().name || 'personaje')" />
+                } @else {
+                  <span class="muted small">Sin retrato</span>
+                }
+              </div>
+              @if (avatarUrl()) {
+                <label class="img-gallery-toggle" [formGroup]="form.controls.gallery_visibility">
+                  <input type="checkbox" formControlName="avatar" />
+                  <span>Mostrar en galería (guardar cambios)</span>
+                </label>
+              }
+              @if (editable()) {
+                <div class="actions">
+                  <button type="button" class="btn ghost small" (click)="openCropper('avatar')">
+                    {{ avatarUrl() ? 'Cambiar' : 'Subir retrato' }}
+                  </button>
+                  @if (avatarUrl()) {
+                    <button type="button" class="btn danger small" (click)="removeAvatar()">Quitar</button>
+                  }
+                </div>
+              }
+            </div>
+
+            <!-- Imágenes adicionales -->
+            @for (img of extraImages(); track img.id) {
+              <div class="card inner char-img-card">
+                <div class="char-img-head">
+                  <span class="badge" [class.gold]="img.show_in_gallery">
+                    {{ img.show_in_gallery ? 'Visible en galería' : 'Solo en la hoja' }}
+                  </span>
+                </div>
+                <div class="char-img-preview checkerboard">
+                  <img [src]="img.url" [alt]="img.caption || 'Imagen de ' + (v().name || 'personaje')" loading="lazy" />
+                </div>
+                <label class="img-gallery-toggle">
+                  <input
+                    type="checkbox"
+                    [checked]="img.show_in_gallery"
+                    [disabled]="!editable()"
+                    (change)="toggleExtraImageGallery(img)" />
+                  <span>Mostrar en galería</span>
+                </label>
+                <input
+                  type="text"
+                  maxlength="80"
+                  placeholder="Etiqueta opcional (ej. Con armadura)"
+                  [value]="img.caption ?? ''"
+                  [disabled]="!editable()"
+                  (blur)="saveExtraImageCaption(img, $any($event.target).value)"
+                  (keydown.enter)="$any($event.target).blur()" />
+                @if (editable()) {
+                  <div class="actions">
+                    <button type="button" class="btn danger small" (click)="removeExtraImage(img)">Eliminar</button>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+      }
     </div>
   </div>
 </form>
 
 @if (cropperOpen()) {
   <app-avatar-cropper (done)="onAvatarCropped($event)" (cancel)="cropperOpen.set(false)" />
+}
+
+@if (deathConfirmOpen() && character(); as c) {
+  <div class="modal-backdrop" (click)="!killing() && deathConfirmOpen.set(false)">
+    <div class="card modal" (click)="$event.stopPropagation()">
+      <h2 class="title">💀 ¿La vida de {{ c.name }} llegó a su fin?</h2>
+      <p>
+        Al marcar el tercer fallo en las salvaciones de muerte, <strong>tu personaje morirá definitivamente</strong>.
+      </p>
+      <p class="alert error">
+        Esta acción no se puede deshacer: su hoja quedará en solo lectura (seguirá visible en
+        <strong>Mis Personajes</strong> y en la <strong>Galería</strong> marcado como muerto) y se habilitará
+        el cupo para crear un nuevo personaje.
+      </p>
+      <div class="actions">
+        <button type="button" class="btn ghost" [disabled]="killing()" (click)="deathConfirmOpen.set(false)">
+          No, cancelar
+        </button>
+        <button type="button" class="btn danger" [disabled]="killing()" (click)="confirmDeath()">
+          {{ killing() ? 'Registrando muerte…' : 'Sí, mi personaje murió' }}
+        </button>
+      </div>
+    </div>
+  </div>
 }
 }

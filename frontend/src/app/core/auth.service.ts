@@ -60,6 +60,11 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 
+  /** Actualiza en memoria el oro total del perfil cuando cambia la billetera del PJ principal vivo. */
+  setGoldTotal(gold: number): void {
+    this.user.update((u) => (u ? { ...u, gold_total: gold } : null));
+  }
+
   /** Ruta inicial según el rol del usuario. */
   homeRoute(): string {
     const u = this.user();

@@ -42,6 +42,11 @@ export const routes: Routes = [
         canActivate: [roleGuard('jugador', 'dungeon_master')],
         loadComponent: () => import('./pages/missions.component').then((m) => m.MissionsComponent),
       },
+      {
+        path: 'tienda',
+        canActivate: [roleGuard('jugador', 'dungeon_master')],
+        loadComponent: () => import('./pages/shop.component').then((m) => m.ShopComponent),
+      },
       { path: 'admin', canActivate: [adminGuard], loadComponent: () => import('./pages/admin-users.component').then((m) => m.AdminUsersComponent) },
       { path: '', pathMatch: 'full', redirectTo: 'mis-personajes' },
     ],

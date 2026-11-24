@@ -48,10 +48,31 @@ export const ALIGNMENTS = [
 ];
 export const BACKGROUNDS = ['Acólito', 'Artesano gremial', 'Artista', 'Charlatán', 'Criminal', 'Ermitaño', 'Erudito', 'Forastero', 'Héroe del pueblo', 'Huérfano', 'Marinero', 'Noble', 'Soldado'];
 
-export const COINS = [
-  { key: 'cp', label: 'PC' }, { key: 'sp', label: 'PP' }, { key: 'ep', label: 'PE' },
-  { key: 'gp', label: 'PO' }, { key: 'pp', label: 'PPT' },
-] as const;
+export type CoinKey = 'pp' | 'gp' | 'sp' | 'cp';
+
+export const COINS: { key: CoinKey; label: string; name: string; rate: number }[] = [
+  { key: 'pp', label: 'PPT', name: 'Platino', rate: 1000 },
+  { key: 'gp', label: 'PO', name: 'Oro', rate: 100 },
+  { key: 'sp', label: 'PP', name: 'Plata', rate: 10 },
+  { key: 'cp', label: 'PC', name: 'Cobre', rate: 1 },
+];
+
+export function totalCopper(money?: Partial<Record<CoinKey, number>> | null): number {
+  if (!money) return 0;
+  return (Number(money.pp) || 0) * 1000
+    + (Number(money.gp) || 0) * 100
+    + (Number(money.sp) || 0) * 10
+    + (Number(money.cp) || 0);
+}
+
+export function goldTotal(money?: Partial<Record<CoinKey, number>> | null): number {
+  return Math.round(totalCopper(money)) / 100;
+}
+
+export function formatGold(value: number | null | undefined): string {
+  const n = Number(value ?? 0);
+  return n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
 
 export const modifier = (score: number) => Math.floor((Number(score) - 10) / 2);
 export const proficiencyBonus = (level: number) => Math.ceil(Math.max(1, Number(level)) / 4) + 1;

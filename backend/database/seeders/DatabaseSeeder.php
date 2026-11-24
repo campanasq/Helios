@@ -24,5 +24,7 @@ class DatabaseSeeder extends Seeder
         $user->is_superadmin = true;
         $user->is_active = true;
         $user->save();
+
+        $this->call(ShopSeeder::class);
     }
 }

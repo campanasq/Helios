@@ -5,16 +5,25 @@ import { AuthService } from '../core/auth.service';
 import { ABILITIES, modifier, signed } from '../core/dnd';
 import { GalleryCharacter } from '../core/models';
 
-/** Galería de héroes: escenario en carrusel con todos los personajes que tienen retrato. */
+type GalleryFilter = 'all' | 'playable' | 'npc';
+
+/** Galería de personajes: escenario en carrusel con todos los personajes jugables y NPCs que tienen retrato. */
 @Component({
   selector: 'app-gallery',
   imports: [RouterLink],
   template: `
     <div class="page-header">
-      <h1 class="title">Galería de héroes</h1>
-      @if (all().length > 1) {
-        <input class="search" placeholder="Buscar héroe, clase, raza o jugador…" (input)="setQuery($any($event.target).value)" />
-      }
+      <h1 class="title">Galería de personajes</h1>
+      <div class="gallery-controls">
+        <div class="segmented" role="group" aria-label="Filtrar tipo de personaje">
+          <button type="button" [class.active]="filter() === 'all'" (click)="setFilter('all')">Todos</button>
+          <button type="button" [class.active]="filter() === 'playable'" (click)="setFilter('playable')">Jugables</button>
+          <button type="button" [class.active]="filter() === 'npc'" (click)="setFilter('npc')">NPCs</button>
+        </div>
+        @if (all().length > 1) {
+          <input class="search" placeholder="Buscar personaje, clase, raza o jugador…" (input)="setQuery($any($event.target).value)" />
+        }
+      </div>
     </div>
 
     @if (loading()) {
@@ -26,7 +35,7 @@ import { GalleryCharacter } from '../core/models';
         <a class="btn primary" routerLink="/mis-personajes">Ir a Mis Personajes</a>
       </div>
     } @else if (list().length === 0) {
-      <div class="card empty">Ningún héroe coincide con la búsqueda.</div>
+      <div class="card empty">Ningún personaje coincide con la búsqueda o el filtro.</div>
     } @else {
       @let sel = selected()!;
       <section class="hall">
@@ -35,43 +44,82 @@ import { GalleryCharacter } from '../core/models';
           @for (c of list(); track c.id; let i = $index) {
             @let off = offset(i);
             @if (abs(off) <= 2) {
-              <button type="button" class="figure" [class.center]="off === 0"
+              <button type="button" class="figure" [class.center]="off === 0" [class.is-dead]="!c.is_npc && c.is_dead"
                 [style.--off]="off" [style.--abs]="abs(off)" [style.z-index]="10 - abs(off)"
-                (click)="select(i)" [attr.aria-label]="'Ver a ' + c.name" [attr.aria-current]="off === 0">
-                <img [src]="c.avatar_url" [alt]="c.name" draggable="false" />
+                (click)="select(i)" [attr.aria-label]="'Ver a ' + displayName(c)" [attr.aria-current]="off === 0">
+                <img [src]="figureImageUrl(c, off === 0)" [alt]="displayName(c)" draggable="false" />
               </button>
             }
           }
           @if (list().length > 1) {
-            <button type="button" class="stage-nav prev" (click)="move(-1)" aria-label="Héroe anterior">‹</button>
-            <button type="button" class="stage-nav next" (click)="move(1)" aria-label="Héroe siguiente">›</button>
+            <button type="button" class="stage-nav prev" (click)="move(-1)" aria-label="Personaje anterior">‹</button>
+            <button type="button" class="stage-nav next" (click)="move(1)" aria-label="Personaje siguiente">›</button>
+          }
+          @if (selectedImages().length > 1) {
+            <div class="stage-vnav-wrap">
+              <button type="button" class="stage-vnav" (click)="moveImage(-1)" aria-label="Imagen anterior del personaje" title="Imagen anterior (↑)">▲</button>
+              <span class="stage-vnav-count">{{ imageIndex() + 1 }} / {{ selectedImages().length }}</span>
+              <button type="button" class="stage-vnav" (click)="moveImage(1)" aria-label="Siguiente imagen del personaje" title="Siguiente imagen (↓)">▼</button>
+            </div>
           }
           <div class="stage-plaque">
-            <span class="plaque-name">{{ sel.name }}</span>
-            <span class="plaque-sub">{{ sel.race }} · {{ sel.class }} · Nv. {{ sel.level }}</span>
+            <span class="plaque-name">@if (!sel.is_npc && sel.is_dead) { 💀 }{{ displayName(sel) }}</span>
+            @if (currentCaption(); as cap) {
+              <span class="plaque-caption">{{ cap }}</span>
+            }
+            @if (plaqueSub(sel); as sub) {
+              <span class="plaque-sub">{{ sub }}</span>
+            }
           </div>
         </div>
 
-        <!-- Ficha -->
+        <!-- Ficha pública (respeta la visibilidad elegida por cada jugador o DM) -->
         @for (c of [sel]; track c.id) {
           <aside class="card parchment hero-card">
-            <p class="hero-kicker">Héroe {{ index() + 1 }} de {{ list().length }}</p>
-            <h2 class="title">{{ c.name }}</h2>
-            <p class="hero-sub">{{ c.race }} · {{ c.class }} de nivel {{ c.level }}</p>
-            <dl class="hero-facts">
-              <div><dt>Jugador</dt><dd>{{ c.user?.name ?? '—' }}</dd></div>
-              @if (c.alignment) { <div><dt>Alineamiento</dt><dd>{{ c.alignment }}</dd></div> }
-              @if (c.background) { <div><dt>Trasfondo</dt><dd>{{ c.background }}</dd></div> }
-            </dl>
-            <div class="hero-vitals">
-              <div><span>CA</span><strong>{{ c.armor_class }}</strong></div>
-              <div><span>PG máx.</span><strong>{{ c.hit_points }}</strong></div>
+            <div class="badges" style="justify-content: space-between; align-items: center;">
+              <p class="hero-kicker">Personaje {{ index() + 1 }} de {{ list().length }}</p>
+              <div class="badges">
+                @if (c.is_npc) { <span class="badge npc">NPC</span> }
+                @if (!c.is_npc && c.is_dead) { <span class="badge dead">💀 Muerto</span> }
+              </div>
             </div>
-            <div class="stat-row">
-              @for (a of abilities; track a.key) {
-                <div class="stat"><span>{{ a.short }}</span><strong>{{ c[a.key] }}</strong><small>{{ mod(c[a.key]) }}</small></div>
-              }
-            </div>
+            <h2 class="title">{{ displayName(c) }}</h2>
+            @if (heroSubtitle(c); as sub) {
+              <p class="hero-sub">{{ sub }}</p>
+            }
+
+            @if (c.user || c.alignment || c.background) {
+              <dl class="hero-facts">
+                @if (c.user) { <div><dt>{{ c.is_npc ? 'DM' : 'Jugador' }}</dt><dd>{{ c.user.name }}</dd></div> }
+                @if (c.alignment) { <div><dt>Alineamiento</dt><dd>{{ c.alignment }}</dd></div> }
+                @if (c.background) { <div><dt>Trasfondo</dt><dd>{{ c.background }}</dd></div> }
+              </dl>
+            }
+
+            @if (c.armor_class !== null || c.hit_points !== null) {
+              <div class="hero-vitals">
+                <div><span>CA</span><strong>{{ c.armor_class }}</strong></div>
+                <div><span>PG máx.</span><strong>{{ c.hit_points }}</strong></div>
+              </div>
+            }
+
+            @if (c.strength !== null) {
+              <div class="stat-row">
+                @for (a of abilities; track a.key) {
+                  @let val = c[a.key]!;
+                  <div class="stat"><span>{{ a.short }}</span><strong>{{ val }}</strong><small>{{ mod(val) }}</small></div>
+                }
+              </div>
+            }
+
+            @if (c.backstory) {
+              <p class="hero-backstory">{{ c.backstory }}</p>
+            }
+
+            @if (isInfoHidden(c)) {
+              <p class="muted small">Información adicional reservada.</p>
+            }
+
             @if (canOpen(c)) {
               <a class="btn primary" [routerLink]="['/personajes', c.id]">Abrir hoja</a>
             }
@@ -81,13 +129,13 @@ import { GalleryCharacter } from '../core/models';
 
       <!-- Alineación completa -->
       <section class="lineup-wrap">
-        <h3 class="subtitle">Todos los héroes</h3>
+        <h3 class="subtitle">Todos los personajes</h3>
         <div class="lineup">
           @for (c of list(); track c.id; let i = $index) {
-            <button type="button" class="lineup-item" [class.active]="i === index()" (click)="select(i)">
-              <img [src]="c.avatar_url" [alt]="c.name" loading="lazy" draggable="false" />
-              <span class="lineup-name">{{ c.name }}</span>
-              <span class="lineup-sub">Nv. {{ c.level }} · {{ c.class }}</span>
+            <button type="button" class="lineup-item" [class.active]="i === index()" [class.is-dead]="!c.is_npc && c.is_dead" (click)="select(i)">
+              <img [src]="c.avatar_url" [alt]="displayName(c)" loading="lazy" draggable="false" />
+              <span class="lineup-name">@if (!c.is_npc && c.is_dead) { 💀 }{{ displayName(c) }}</span>
+              <span class="lineup-sub">{{ lineupSub(c) }}</span>
             </button>
           }
         </div>
@@ -113,16 +161,25 @@ export class GalleryComponent implements OnInit {
   all = signal<GalleryCharacter[]>([]);
   withoutPortrait = signal(0);
   query = signal('');
+  filter = signal<GalleryFilter>('all');
   index = signal(0);
+  imageIndex = signal(0);
+
+  hasNpcs = computed(() => this.all().some((c) => c.is_npc));
 
   list = computed(() => {
     const q = this.query().toLowerCase().trim();
-    if (!q) return this.all();
-    return this.all().filter((c) =>
-      [c.name, c.race, c.class, c.user?.name].some((v) => v?.toLowerCase().includes(q)),
-    );
+    const f = this.filter();
+    return this.all().filter((c) => {
+      if (f === 'playable' && c.is_npc) return false;
+      if (f === 'npc' && !c.is_npc) return false;
+      if (!q) return true;
+      return [c.name, c.race, c.class, c.user?.name].some((v) => v?.toLowerCase().includes(q));
+    });
   });
   selected = computed(() => this.list()[this.index()] ?? null);
+  selectedImages = computed(() => this.selected()?.gallery_images ?? []);
+  currentCaption = computed(() => this.selectedImages()[this.imageIndex()]?.caption ?? null);
 
   private touchX = 0;
 
@@ -137,7 +194,52 @@ export class GalleryComponent implements OnInit {
     });
   }
 
-  /** Posición relativa al héroe seleccionado, de forma circular (… -2 -1 0 +1 +2 …). */
+  displayName(c: GalleryCharacter): string {
+    return c.name ?? '???';
+  }
+
+  figureImageUrl(c: GalleryCharacter, isCenter: boolean): string | null {
+    if (isCenter && c.gallery_images?.length) {
+      return c.gallery_images[this.imageIndex()]?.url ?? c.gallery_images[0].url;
+    }
+    return c.gallery_images?.[0]?.url ?? c.avatar_url;
+  }
+
+  plaqueSub(c: GalleryCharacter): string {
+    const parts: string[] = [];
+    if (c.is_npc) parts.push('NPC');
+    if (c.race) parts.push(c.race);
+    if (c.class) parts.push(c.class);
+    if (c.level !== null) parts.push(`Nv. ${c.level}`);
+    if (!c.is_npc && c.is_dead) parts.push('Muerto');
+    return parts.join(' · ');
+  }
+
+  heroSubtitle(c: GalleryCharacter): string {
+    const parts: string[] = [];
+    if (c.race) parts.push(c.race);
+    if (c.class && c.level !== null) parts.push(`${c.class} de nivel ${c.level}`);
+    else if (c.class) parts.push(c.class);
+    else if (c.level !== null) parts.push(`Nivel ${c.level}`);
+    return parts.join(' · ');
+  }
+
+  lineupSub(c: GalleryCharacter): string {
+    if (!c.is_npc && c.is_dead) return 'Muerto';
+    if (c.is_npc) return c.race ? `NPC · ${c.race}` : 'NPC';
+    if (c.level !== null && c.class) return `Nv. ${c.level} · ${c.class}`;
+    if (c.race) return c.race;
+    return 'Personaje';
+  }
+
+  isInfoHidden(c: GalleryCharacter): boolean {
+    return (
+      !c.race && !c.class && c.level === null && !c.user && !c.alignment &&
+      !c.background && c.armor_class === null && c.strength === null && !c.backstory
+    );
+  }
+
+  /** Posición relativa al personaje seleccionado, de forma circular (… -2 -1 0 +1 +2 …). */
   offset(i: number): number {
     const n = this.list().length;
     let off = (((i - this.index()) % n) + n) % n;
@@ -145,19 +247,40 @@ export class GalleryComponent implements OnInit {
     return off;
   }
 
-  select(i: number) { this.index.set(i); }
+  select(i: number) {
+    if (i !== this.index()) this.imageIndex.set(0);
+    this.index.set(i);
+  }
 
   move(delta: number) {
     const n = this.list().length;
-    if (n) this.index.set((this.index() + delta + n) % n);
+    if (n) {
+      this.index.set((this.index() + delta + n) % n);
+      this.imageIndex.set(0);
+    }
+  }
+
+  moveImage(delta: number) {
+    const n = this.selectedImages().length;
+    if (n > 1) {
+      this.imageIndex.set((this.imageIndex() + delta + n) % n);
+    }
   }
 
   setQuery(q: string) {
     this.query.set(q);
     this.index.set(0);
+    this.imageIndex.set(0);
+  }
+
+  setFilter(f: GalleryFilter) {
+    this.filter.set(f);
+    this.index.set(0);
+    this.imageIndex.set(0);
   }
 
   canOpen(c: GalleryCharacter) {
+    if (c.is_npc) return c.user_id === this.auth.user()?.id;
     return c.user_id === this.auth.user()?.id || this.auth.hasRole('dungeon_master');
   }
 
@@ -167,6 +290,14 @@ export class GalleryComponent implements OnInit {
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if (e.key === 'ArrowLeft') this.move(-1);
     if (e.key === 'ArrowRight') this.move(1);
+    if (e.key === 'ArrowUp' && this.selectedImages().length > 1) {
+      e.preventDefault();
+      this.moveImage(-1);
+    }
+    if (e.key === 'ArrowDown' && this.selectedImages().length > 1) {
+      e.preventDefault();
+      this.moveImage(1);
+    }
   }
 
   touchStart(e: TouchEvent) { this.touchX = e.changedTouches[0].clientX; }

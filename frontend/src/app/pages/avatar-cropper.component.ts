@@ -14,7 +14,7 @@ import { ImageCroppedEvent, ImageCropperComponent } from 'ngx-image-cropper';
         <h2 class="title">Retrato del personaje</h2>
         <p class="muted small">
           Sube un <strong>PNG</strong> de tu personaje <strong>de cuerpo entero</strong>, a ser posible con el
-          <strong>fondo transparente</strong> (recortado). Se encuadra en proporción 2:4 y así aparecerá de pie en la Galería de héroes.
+          <strong>fondo transparente</strong> (recortado). Se encuadra en proporción 2:4 y así aparecerá de pie en la Galería de personajes.
         </p>
 
         <label class="btn ghost file-btn">

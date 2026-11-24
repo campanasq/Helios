@@ -3,26 +3,27 @@ import { Component, DestroyRef, OnDestroy, OnInit, computed, inject, signal } fr
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Observable, debounceTime, of, switchMap } from 'rxjs';
+import { Observable, combineLatest, debounceTime, of, switchMap } from 'rxjs';
 import { ApiService } from '../core/api.service';
 import { errorMessage } from '../core/auth.interceptor';
 import { AuthService } from '../core/auth.service';
 import {
-  ABILITIES, ABILITY_SHORT, ALIGNMENTS, Ability, BACKGROUNDS, CLASSES, COINS, RACES, SKILLS,
-  modifier, proficiencyBonus, signed,
+  ABILITIES, ABILITY_SHORT, ALIGNMENTS, Ability, BACKGROUNDS, CLASSES, COINS, CoinKey, RACES, SKILLS,
+  formatGold, goldTotal, modifier, proficiencyBonus, signed,
 } from '../core/dnd';
-import { Character } from '../core/models';
+import { Character, CharacterImage, GALLERY_VISIBILITY_FIELDS, defaultGalleryVisibility } from '../core/models';
 import { blobToDataUrl, clearDraft, dataUrlToBlob, draftKey, readDraft, writeDraft } from '../core/drafts';
+import { AbilityRollerComponent, RolledStats } from './ability-roller.component';
 import { AvatarCropperComponent } from './avatar-cropper.component';
 
-type Tab = 'hoja' | 'trasfondo' | 'conjuros';
+type Tab = 'hoja' | 'trasfondo' | 'conjuros' | 'imagenes';
 type AttackGroup = FormGroup<{ name: FormControl<string>; bonus: FormControl<string>; damage: FormControl<string> }>;
 type FormValue = ReturnType<CharacterSheetComponent['form']['getRawValue']>;
 type SpellGroup = FormGroup<{ level: FormControl<number>; name: FormControl<string>; prepared: FormControl<boolean> }>;
 
 @Component({
   selector: 'app-character-sheet',
-  imports: [ReactiveFormsModule, RouterLink, AvatarCropperComponent],
+  imports: [ReactiveFormsModule, RouterLink, AvatarCropperComponent, AbilityRollerComponent],
   templateUrl: './character-sheet.component.html',
 })
 export class CharacterSheetComponent implements OnInit, OnDestroy {
@@ -36,8 +37,9 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
   // Constantes para la plantilla
   abilities = ABILITIES; skills = SKILLS; races = RACES; classes = CLASSES;
   alignments = ALIGNMENTS; backgrounds = BACKGROUNDS; coins = COINS; abilityShort = ABILITY_SHORT;
+  visibilityFields = GALLERY_VISIBILITY_FIELDS;
   spellLevels = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-  signed = signed; modifier = modifier;
+  signed = signed; modifier = modifier; formatGold = formatGold;
 
   tab = signal<Tab>('hoja');
   loading = signal(true);
@@ -47,15 +49,43 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
 
   character = signal<Character | null>(null);
   editable = signal(true);
+  isOwner = computed(() => !this.character() || this.character()!.user_id === this.auth.user()?.id);
+  isDm = computed(() => this.auth.hasRole('dungeon_master'));
+  isNpc = signal(false);
+
+  /** Paso de creación: 'roller' (tirador 4d6) → 'sheet' (hoja de personaje). */
+  step = signal<'roller' | 'sheet'>('sheet');
+  /** Si el usuario (jugador o DM) ya tiene un PJ jugable vivo, bloquea crear otro PJ principal. */
+  aliveCharacter = signal<Character | null>(null);
+
+  // Modal de muerte definitiva (al llegar a 3 fallos de salvación de muerte)
+  deathConfirmOpen = signal(false);
+  killing = signal(false);
+
+  // Billetera: conversor (dueño) y ajuste (DM)
+  walletBusy = signal(false);
+  walletError = signal('');
+  convertFrom = signal<CoinKey>('sp');
+  convertTo = signal<CoinKey>('gp');
+  convertAmount = signal(10);
+  dmAdjust = signal<Record<CoinKey, number>>({ pp: 0, gp: 0, sp: 0, cp: 0 });
+  canDmAdjustWallet = computed(() => {
+    const c = this.character();
+    return !!c && this.isDm() && (c.is_npc || !c.is_dead);
+  });
 
   /** Fecha del borrador local recuperado (si lo hay), para avisar al usuario. */
   draftRestoredAt = signal<Date | null>(null);
   private storageKey = '';
   private pendingAvatarDataUrl: string | null = null;
 
-  // Avatar
+  // Avatar e imágenes adicionales
   cropperOpen = signal(false);
+  cropperMode = signal<'avatar' | 'extra'>('avatar');
   avatarUrl = signal<string | null>(null);
+  extraImages = signal<CharacterImage[]>([]);
+  uploadingImage = signal(false);
+  totalImagesCount = computed(() => (this.avatarUrl() ? 1 : 0) + this.extraImages().length);
   /** Para personajes nuevos: el avatar se sube al guardar. */
   private pendingAvatar: Blob | null = null;
   private objectUrl: string | null = null;
@@ -78,6 +108,7 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
     const a = this.v().sheet.spellcasting.ability as Ability | '';
     return a ? this.mods()[a] : null;
   });
+  characterGoldTotal = computed(() => goldTotal(this.v().sheet.money));
   spellDc = computed(() => (this.spellMod() === null ? null : 8 + this.prof() + this.spellMod()!));
   spellAttack = computed(() => (this.spellMod() === null ? null : this.prof() + this.spellMod()!));
   /** Índices de los conjuros dentro del FormArray, agrupados por nivel. */
@@ -102,20 +133,76 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
       .pipe(debounceTime(500), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.saveDraft());
 
-    const id = Number(this.route.snapshot.paramMap.get('id'));
-    this.storageKey = draftKey(this.auth.user()?.id, id || null);
-    if (!id) {
-      this.restoreDraft();
-      this.loading.set(false);
-      return;
-    }
-    this.api.character(id).subscribe({
-      next: (c) => this.load(c),
-      error: (e: HttpErrorResponse) => {
-        this.flash(errorMessage(e), true);
-        this.loading.set(false);
-      },
-    });
+    combineLatest([this.route.paramMap, this.route.queryParamMap])
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(([params, query]) => {
+        const id = Number(params.get('id'));
+        const wantsNpc = query.get('tipo') === 'npc' && this.auth.hasRole('dungeon_master');
+
+        // Resetear estado al cambiar entre /personajes/nuevo, ?tipo=npc o /personajes/:id
+        this.loading.set(true);
+        this.character.set(null);
+        this.aliveCharacter.set(null);
+        this.draftRestoredAt.set(null);
+        this.avatarUrl.set(null);
+        this.extraImages.set([]);
+        this.pendingAvatar = null;
+        this.pendingAvatarDataUrl = null;
+        this.editable.set(true);
+        this.form.enable({ emitEvent: false });
+
+        if (!id) {
+          this.isNpc.set(wantsNpc);
+          this.storageKey = draftKey(this.auth.user()?.id, null) + (wantsNpc ? ':npc' : '');
+          this.applyValue(this.initialValue);
+          this.form.controls.gallery_visibility.patchValue(defaultGalleryVisibility(wantsNpc), { emitEvent: false });
+          this.form.markAsPristine();
+          this.v.set(this.form.getRawValue());
+
+          if (wantsNpc) {
+            // Los NPCs van directo a la hoja (sin tirador de dados) y con visibilidad reservada por defecto
+            this.restoreDraft();
+            this.step.set('sheet');
+            this.loading.set(false);
+            return;
+          }
+
+          const startNewPlayable = () => {
+            const hasDraft = !!readDraft<FormValue>(this.storageKey);
+            if (hasDraft) {
+              this.restoreDraft();
+              this.step.set('sheet');
+            } else {
+              this.step.set('roller');
+            }
+            this.loading.set(false);
+          };
+
+          // Todos (jugadores y DMs) pueden tener como máximo 1 PJ jugable vivo simultáneamente
+          this.api.myCharacters().subscribe({
+            next: (cs) => {
+              const alive = cs.find((c) => !c.is_npc && !c.is_dead) ?? null;
+              if (alive) {
+                this.aliveCharacter.set(alive);
+                this.loading.set(false);
+                return;
+              }
+              startNewPlayable();
+            },
+            error: () => startNewPlayable(),
+          });
+          return;
+        }
+
+        this.storageKey = draftKey(this.auth.user()?.id, id);
+        this.api.character(id).subscribe({
+          next: (c) => this.load(c),
+          error: (e: HttpErrorResponse) => {
+            this.flash(errorMessage(e), true);
+            this.loading.set(false);
+          },
+        });
+      });
   }
 
   ngOnDestroy() {
@@ -139,6 +226,7 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
       hit_points: [10, [Validators.required, Validators.min(1), Validators.max(999)]],
       armor_class: [10, [Validators.required, Validators.min(1), Validators.max(40)]],
       backstory: [''],
+      gallery_visibility: fb.group(defaultGalleryVisibility(false)),
       sheet: fb.group({
         player_name: [this.auth.user()?.name ?? ''],
         experience: [0],
@@ -177,20 +265,40 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
 
   private load(c: Character) {
     this.character.set(c);
+    this.isNpc.set(c.is_npc);
     this.avatarUrl.set(c.avatar_url);
-    this.editable.set(c.user_id === this.auth.user()?.id);
+    this.extraImages.set(c.images ?? []);
+    this.editable.set(c.user_id === this.auth.user()?.id && (c.is_npc || !c.is_dead));
+    this.step.set('sheet');
 
     this.applyValue({
       ...c,
       alignment: c.alignment ?? '',
       background: c.background ?? '',
       backstory: c.backstory ?? '',
+      gallery_visibility: c.gallery_visibility ?? defaultGalleryVisibility(c.is_npc),
     } as unknown as FormValue);
 
     if (!this.editable()) this.form.disable({ emitEvent: false });
+    else this.form.enable({ emitEvent: false });
     this.form.markAsPristine();
     if (this.editable()) this.restoreDraft(c);
+    this.syncProfileGold(c);
     this.loading.set(false);
+  }
+
+  private syncProfileGold(c: Character) {
+    if (c.user_id === this.auth.user()?.id && !c.is_npc) {
+      this.auth.setGoldTotal(c.is_dead ? 0 : goldTotal(c.sheet?.money));
+    }
+  }
+
+  onRollsCompleted(stats: RolledStats) {
+    this.form.patchValue(stats);
+    this.form.markAsDirty();
+    this.v.set(this.form.getRawValue());
+    this.saveDraft();
+    this.step.set('sheet');
   }
 
   /** Vuelca un valor completo en el formulario, recreando las listas (ataques/conjuros). */
@@ -265,8 +373,133 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
   setDeathSave(kind: 'successes' | 'failures', n: number) {
     if (!this.editable()) return;
     const ctrl = this.sheet.controls.death_saves.controls[kind];
-    ctrl.setValue(ctrl.value === n ? n - 1 : n);
+    const nextVal = ctrl.value === n ? n - 1 : n;
+
+    // Al llegar al 3.º fallo en un PJ jugable guardado, pedir confirmación de muerte definitiva
+    // (los NPCs del DM se editan libremente sin bloqueo)
+    if (kind === 'failures' && nextVal === 3 && !this.isNpc()) {
+      if (this.character()) {
+        this.deathConfirmOpen.set(true);
+        return;
+      }
+      this.flash('Primero creá el personaje para poder registrar su muerte definitiva.', true);
+      return;
+    }
+
+    ctrl.setValue(nextVal);
     ctrl.markAsDirty();
+  }
+
+  confirmDeath() {
+    const c = this.character();
+    if (!c || this.killing()) return;
+    this.killing.set(true);
+    this.api.killCharacter(c.id).subscribe({
+      next: (updated) => {
+        this.killing.set(false);
+        this.deathConfirmOpen.set(false);
+        clearDraft(this.storageKey);
+        this.draftRestoredAt.set(null);
+        this.load(updated);
+        this.flash(`${updated.name} ha muerto definitivamente.`, false);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.killing.set(false);
+        this.deathConfirmOpen.set(false);
+        this.flash(errorMessage(e), true);
+      },
+    });
+  }
+
+  // ---------- Billetera / Contador de Oro ----------
+
+  setDmCoin(coin: CoinKey, raw: string) {
+    const n = Math.max(0, Math.floor(Number(raw) || 0));
+    this.dmAdjust.update((d) => ({ ...d, [coin]: n }));
+  }
+
+  applyDmAdjust(sign: 1 | -1) {
+    const c = this.character();
+    if (!c || !this.canDmAdjustWallet() || this.walletBusy()) return;
+    const raw = this.dmAdjust();
+    const deltas: Partial<Record<CoinKey, number>> = {
+      pp: raw.pp * sign,
+      gp: raw.gp * sign,
+      sp: raw.sp * sign,
+      cp: raw.cp * sign,
+    };
+    if (!deltas.pp && !deltas.gp && !deltas.sp && !deltas.cp) {
+      this.walletError.set('Ingresá al menos una cantidad mayor a 0.');
+      return;
+    }
+    this.walletError.set('');
+    this.walletBusy.set(true);
+    this.api.adjustWallet(c.id, deltas).subscribe({
+      next: (updated) => {
+        this.walletBusy.set(false);
+        this.dmAdjust.set({ pp: 0, gp: 0, sp: 0, cp: 0 });
+        this.applyWalletUpdate(updated);
+        this.flash(sign === 1 ? 'Dinero entregado.' : 'Dinero descontado.', false);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.walletBusy.set(false);
+        this.walletError.set(errorMessage(e));
+      },
+    });
+  }
+
+  runConvert() {
+    const c = this.character();
+    if (!c || !this.editable() || this.walletBusy()) return;
+    const from = this.convertFrom();
+    const to = this.convertTo();
+    const amount = Math.floor(Number(this.convertAmount()) || 0);
+    if (from === to) {
+      this.walletError.set('Elegí dos monedas distintas.');
+      return;
+    }
+    if (amount < 1) {
+      this.walletError.set('La cantidad debe ser mayor a 0.');
+      return;
+    }
+    this.walletError.set('');
+    this.walletBusy.set(true);
+    this.api.convertWallet(c.id, { from, to, amount }).subscribe({
+      next: (updated) => {
+        this.walletBusy.set(false);
+        this.applyWalletUpdate(updated);
+        this.flash('Monedas convertidas.', false);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.walletBusy.set(false);
+        this.walletError.set(errorMessage(e));
+      },
+    });
+  }
+
+  compactCoins() {
+    const c = this.character();
+    if (!c || !this.editable() || this.walletBusy()) return;
+    this.walletError.set('');
+    this.walletBusy.set(true);
+    this.api.convertWallet(c.id, { compact: true }).subscribe({
+      next: (updated) => {
+        this.walletBusy.set(false);
+        this.applyWalletUpdate(updated);
+        this.flash('Monedas compactadas.', false);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.walletBusy.set(false);
+        this.walletError.set(errorMessage(e));
+      },
+    });
+  }
+
+  private applyWalletUpdate(updated: Character) {
+    this.character.set(updated);
+    this.sheet.controls.money.patchValue(updated.sheet.money, { emitEvent: false });
+    this.v.set(this.form.getRawValue());
+    this.syncProfileGold(updated);
   }
 
   save() {
@@ -277,7 +510,10 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
       return;
     }
     this.saving.set(true);
-    const data = this.form.getRawValue() as unknown as Partial<Character>;
+    const data = {
+      ...(this.form.getRawValue() as unknown as Partial<Character>),
+      is_npc: this.isNpc(),
+    };
     const existing = this.character();
 
     const req: Observable<Character> = existing
@@ -309,11 +545,34 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
     });
   }
 
-  // ---------- Avatar ----------
+  // ---------- Avatar e imágenes adicionales ----------
+
+  openCropper(mode: 'avatar' | 'extra') {
+    this.cropperMode.set(mode);
+    this.cropperOpen.set(true);
+  }
 
   onAvatarCropped(blob: Blob) {
     this.cropperOpen.set(false);
     const c = this.character();
+
+    if (this.cropperMode() === 'extra') {
+      if (!c) return;
+      this.uploadingImage.set(true);
+      this.api.uploadCharacterImage(c.id, blob).subscribe({
+        next: (img) => {
+          this.uploadingImage.set(false);
+          this.extraImages.update((list) => [...list, img]);
+          this.flash('Imagen agregada a la hoja.', false);
+        },
+        error: (e: HttpErrorResponse) => {
+          this.uploadingImage.set(false);
+          this.flash(errorMessage(e), true);
+        },
+      });
+      return;
+    }
+
     if (!c) {
       // Personaje nuevo: guardamos el blob y mostramos la vista previa local
       this.pendingAvatar = blob;
@@ -332,6 +591,42 @@ export class CharacterSheetComponent implements OnInit, OnDestroy {
         this.character.set(updated);
         this.avatarUrl.set(updated.avatar_url);
         this.flash('Retrato actualizado.', false);
+      },
+      error: (e: HttpErrorResponse) => this.flash(errorMessage(e), true),
+    });
+  }
+
+  toggleExtraImageGallery(img: CharacterImage) {
+    const c = this.character();
+    if (!c || !this.editable()) return;
+    this.api.updateCharacterImage(c.id, img.id, { show_in_gallery: !img.show_in_gallery }).subscribe({
+      next: (updated) => {
+        this.extraImages.update((list) => list.map((x) => (x.id === updated.id ? updated : x)));
+      },
+      error: (e: HttpErrorResponse) => this.flash(errorMessage(e), true),
+    });
+  }
+
+  saveExtraImageCaption(img: CharacterImage, caption: string) {
+    const c = this.character();
+    const cleaned = caption.trim() || null;
+    if (!c || !this.editable() || cleaned === (img.caption ?? null)) return;
+    this.api.updateCharacterImage(c.id, img.id, { caption: cleaned }).subscribe({
+      next: (updated) => {
+        this.extraImages.update((list) => list.map((x) => (x.id === updated.id ? updated : x)));
+      },
+      error: (e: HttpErrorResponse) => this.flash(errorMessage(e), true),
+    });
+  }
+
+  removeExtraImage(img: CharacterImage) {
+    const c = this.character();
+    if (!c || !this.editable()) return;
+    if (!confirm('¿Eliminar esta imagen del personaje?')) return;
+    this.api.deleteCharacterImage(c.id, img.id).subscribe({
+      next: () => {
+        this.extraImages.update((list) => list.filter((x) => x.id !== img.id));
+        this.flash('Imagen eliminada.', false);
       },
       error: (e: HttpErrorResponse) => this.flash(errorMessage(e), true),
     });

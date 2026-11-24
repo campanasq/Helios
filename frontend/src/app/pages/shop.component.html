@@ -1,0 +1,457 @@
+@if (loading()) {
+  <p class="muted">Acomodando los estantes de la carreta…</p>
+} @else {
+<div class="shop-page">
+
+  <!-- ================= CARTEL COLGANTE DE MADERA ================= -->
+  <header class="wood-sign-wrap">
+    <div class="wood-chains" aria-hidden="true"><span></span><span></span></div>
+    <div class="wood-sign">
+      <span class="nail tl"></span><span class="nail tr"></span>
+      <span class="nail bl"></span><span class="nail br"></span>
+
+      <div class="sign-kicker">
+        {{ merchant()?.rotation_label || 'Tienda Ambulante de Helios' }}
+      </div>
+      <h1 class="sign-title">
+        {{ merchant() ? 'Carreta de ' + merchant()!.name : 'Tienda Ambulante' }}
+      </h1>
+      @if (merchant()?.title) {
+        <p class="sign-sub">{{ merchant()!.title }}</p>
+      }
+    </div>
+
+    <div class="shop-topbar-meta">
+      @if (buyer(); as b) {
+        <div class="purse-pill" title="Para comprar necesitás monedas literales de Oro (PO)">
+          <span>Oro en mano ({{ b.character_name }}):</span>
+          <strong>🪙 {{ b.gp }} PO</strong>
+          @if (b.gold_total > b.gp) {
+            <a class="small" [routerLink]="['/personajes', b.character_id]">(total {{ formatGold(b.gold_total) }} PO · cambiar)</a>
+          }
+        </div>
+      } @else {
+        <div class="purse-pill muted">
+          Necesitás un personaje principal vivo para comprar · <a routerLink="/mis-personajes">Ir a Mis Personajes</a>
+        </div>
+      }
+
+      @if (isDm()) {
+        <button type="button" class="btn primary small" (click)="toggleDmPanel()">
+          {{ dmOpen() ? '✕ Cerrar gestión DM' : '⚙ Gestionar Tienda (DM)' }}
+        </button>
+      }
+    </div>
+  </header>
+
+  @if (!merchant()) {
+    <div class="card empty">
+      <div class="big-icon">🛒</div>
+      <p>No hay ningún mercader en la ciudad ahora mismo.</p>
+      @if (isDm()) {
+        <button type="button" class="btn primary" (click)="toggleDmPanel()">Crear primer mercader</button>
+      }
+    </div>
+  } @else {
+    @let m = merchant()!;
+
+    <!-- ================= MOSTRADOR: MERCADER + ESTANTERÍA ================= -->
+    <section class="shop-booth">
+
+      <!-- Izquierda: El Mercader interactivo -->
+      <div class="merchant-stage">
+        <div class="lantern" aria-hidden="true"></div>
+        <button
+          type="button"
+          class="merchant-trigger"
+          (click)="onMerchantClick()"
+          [attr.aria-label]="'Hablar con ' + m.name">
+          @if (activePoseUrl(); as imgUrl) {
+            <img
+              class="merchant-img"
+              [class.speaking]="typing()"
+              [src]="imgUrl"
+              [alt]="m.name + ' (' + poseLabels[currentPose()] + ')'"
+              draggable="false" />
+          } @else {
+            <app-merchant-art [pose]="currentPose()" [speaking]="typing()" />
+          }
+          <span class="merchant-hint">💬 Clickeame para charlar</span>
+        </button>
+
+        <div class="merchant-counter-ledge">
+          <span class="merchant-nameplate">{{ m.name }}</span>
+          <span class="pose-chip">{{ poseLabels[currentPose()] }}</span>
+        </div>
+      </div>
+
+      <!-- Derecha: Estantería de madera con objetos -->
+      <div class="shelf-panel">
+        <div class="shelf-header">
+          <h2 class="title">Mercadería disponible</h2>
+          <span class="muted small">Pasá el mouse por un objeto para que {{ m.name }} te cuente qué es</span>
+        </div>
+
+        @if (items().length === 0) {
+          <div class="shelf-empty">
+            <span>🪵</span>
+            <p>Estantes vacíos: ya se vendió todo lo que trajo {{ m.name }}.</p>
+          </div>
+        } @else {
+          <div class="shelf-grid">
+            @for (item of items(); track item.id) {
+              <button
+                type="button"
+                class="shelf-item"
+                [class.inspected]="inspectedItem()?.id === item.id"
+                [class.unaffordable]="buyer() && buyer()!.gp < item.price_gp"
+                (mouseenter)="onItemHover(item)"
+                (focus)="onItemHover(item)"
+                (mouseleave)="onItemLeave()"
+                (click)="openBuyModal(item)">
+                <div class="item-art">
+                  @if (item.image_url) {
+                    <img [src]="item.image_url" [alt]="item.name" loading="lazy" draggable="false" />
+                  } @else {
+                    <span class="item-fallback" aria-hidden="true">🏺</span>
+                  }
+                </div>
+                <span class="item-name">{{ item.name }}</span>
+                <span class="item-price">🪙 {{ item.price_gp }} PO</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ================= CAJA DE DIÁLOGO ESTILO RPG / UNDERTALE ================= -->
+    <section
+      class="rpg-dialogue"
+      role="region"
+      aria-live="polite"
+      (click)="onDialogueBoxClick()">
+      <div class="rpg-dialogue-head">
+        <div class="rpg-speaker">
+          <span class="rpg-speaker-name">{{ m.name }}</span>
+          @if (inspectedItem(); as insp) {
+            <span class="badge gold">📦 {{ insp.name }} · {{ insp.price_gp }} PO</span>
+          }
+        </div>
+        <button
+          type="button"
+          class="btn ghost small"
+          (click)="$event.stopPropagation(); voiceEnabled.set(!voiceEnabled())"
+          [attr.aria-pressed]="voiceEnabled()">
+          {{ voiceEnabled() ? '🔊 Voz' : '🔇 Silencio' }}
+        </button>
+      </div>
+
+      <p class="rpg-text">
+        <span class="rpg-asterisk">* </span>{{ shownText() }}@if (!typing()) {<span class="rpg-cursor">▼</span>}
+      </p>
+      <span class="rpg-hint">
+        {{ typing() ? 'Clic para completar texto' : 'Clic para seguir charlando con el mercader' }}
+      </span>
+    </section>
+  }
+
+  <!-- ================= PANEL DE GESTIÓN DM ================= -->
+  @if (isDm() && dmOpen()) {
+    <section class="card dm-shop-panel">
+      <div class="dm-panel-head">
+        <h2 class="title">Gestión de la Tienda (DM)</h2>
+        <div class="segmented">
+          <button type="button" [class.active]="dmTab() === 'items'" (click)="dmTab.set('items')">
+            Objetos ({{ items().length }})
+          </button>
+          <button type="button" [class.active]="dmTab() === 'merchants'" (click)="dmTab.set('merchants')">
+            Mercaderes ({{ allMerchants().length }})
+          </button>
+          <button type="button" [class.active]="dmTab() === 'purchases'" (click)="dmTab.set('purchases')">
+            Ventas ({{ purchases().length }})
+          </button>
+        </div>
+      </div>
+
+      @if (dmMessage()) {
+        <div class="alert" [class.error]="dmIsError()">{{ dmMessage() }}</div>
+      }
+
+      <!-- TAB 1: OBJETOS DEL MERCADER ACTIVO -->
+      @if (dmTab() === 'items' && merchant(); as activeM) {
+        <div class="dm-two-cols">
+          <form id="dm-item-form" class="card inner dm-form" [class.editing-highlight]="editingItem()" [formGroup]="itemForm" (ngSubmit)="saveItem()">
+            <div class="dm-form-head">
+              <h3 class="subtitle">{{ editingItem() ? 'Editar objeto' : 'Nuevo objeto para ' + activeM.name }}</h3>
+              @if (editingItem()) {
+                <button type="button" class="btn ghost small" (click)="startNewItem()">Cancelar edición</button>
+              }
+            </div>
+
+            <label>
+              Nombre del objeto
+              <input formControlName="name" placeholder="Ej. Anillo de Bruma" />
+            </label>
+
+            <div class="grid-2">
+              <label>
+                Precio en Oro (PO)
+                <input type="number" min="1" formControlName="price_gp" />
+              </label>
+              <label>
+                Expresión del mercader al mostrarlo
+                <select formControlName="inspect_pose">
+                  @for (p of poses; track p.key) { <option [value]="p.key">{{ p.label }}</option> }
+                </select>
+              </label>
+            </div>
+
+            <label>
+              Qué dice el mercader al pasar el mouse (qué es, para qué sirve, de dónde lo sacó)
+              <textarea rows="4" formControlName="description" placeholder="Grrr... Lo encontré en las ruinas de..."></textarea>
+            </label>
+
+            <div class="file-row">
+              <label class="btn ghost small file-btn">
+                📷 {{ selectedItemFile() ? selectedItemFile()!.name : 'Elegir imagen del objeto (PNG/JPG/WebP)' }}
+                <input type="file" accept="image/png,image/jpeg,image/webp" (change)="onItemFilePicked($event)" hidden />
+              </label>
+              @if (editingItem()?.image_url && !selectedItemFile()) {
+                <label class="img-gallery-toggle">
+                  <input type="checkbox" [checked]="removeItemImage()" (change)="removeItemImage.set($any($event.target).checked)" />
+                  <span>Quitar imagen actual</span>
+                </label>
+              }
+            </div>
+
+            @if (dmMessage()) {
+              <div class="alert" [class.error]="dmIsError()">{{ dmMessage() }}</div>
+            }
+
+            <div class="actions">
+              <button type="submit" class="btn primary" [disabled]="dmSaving()">
+                {{ dmSaving() ? 'Guardando…' : editingItem() ? 'Guardar cambios' : '+ Agregar objeto' }}
+              </button>
+            </div>
+          </form>
+
+          <div class="card inner">
+            <h3 class="subtitle">Objetos en venta de {{ activeM.name }}</h3>
+            @if (items().length === 0) {
+              <p class="muted small">No hay objetos cargados para este mercader.</p>
+            } @else {
+              <ul class="dm-list">
+                @for (it of items(); track it.id) {
+                  <li>
+                    <div class="dm-item-thumb">
+                      @if (it.image_url) { <img [src]="it.image_url" [alt]="it.name" /> }
+                      @else { <span>🏺</span> }
+                    </div>
+                    <div class="dm-item-info">
+                      <strong>{{ it.name }}</strong>
+                      <span class="badge gold">🪙 {{ it.price_gp }} PO</span>
+                    </div>
+                    <div class="actions-cell">
+                      <button type="button" class="btn ghost small" (click)="editItem(it)">Editar</button>
+                      <button type="button" class="btn danger small" (click)="deleteItem(it)">Borrar</button>
+                    </div>
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- TAB 2: MERCADERES AMBULANTES Y POSES -->
+      @if (dmTab() === 'merchants') {
+        <div class="dm-two-cols">
+          <div class="card inner">
+            <div class="dm-form-head">
+              <h3 class="subtitle">Mercaderes registrados</h3>
+              <button type="button" class="btn primary small" (click)="startNewMerchant()">+ Nuevo mercader</button>
+            </div>
+            <ul class="dm-list">
+              @for (mc of allMerchants(); track mc.id) {
+                <li [class.active-row]="mc.is_active">
+                  <div class="dm-item-info">
+                    <strong>{{ mc.name }}</strong>
+                    <span class="muted tiny">{{ mc.rotation_label || mc.title || 'Mercader ambulante' }}</span>
+                  </div>
+                  <div class="actions-cell">
+                    @if (mc.is_active) {
+                      <span class="badge gold">Activo</span>
+                    } @else {
+                      <button type="button" class="btn primary small" (click)="activateMerchant(mc)">Activar</button>
+                    }
+                    <button type="button" class="btn ghost small" (click)="editMerchant(mc)">Editar</button>
+                    @if (allMerchants().length > 1) {
+                      <button type="button" class="btn danger small" (click)="deleteMerchant(mc)">Borrar</button>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          </div>
+
+          <form class="card inner dm-form" [formGroup]="merchantForm" (ngSubmit)="saveMerchant()">
+            <div class="dm-form-head">
+              <h3 class="subtitle">{{ editingMerchant() ? 'Editar: ' + editingMerchant()!.name : 'Nuevo mercader ambulante' }}</h3>
+            </div>
+
+            <div class="grid-2">
+              <label>Nombre <input formControlName="name" placeholder="Ej. Bram Colmillo Viejo" /></label>
+              <label>Subtítulo / Oficio <input formControlName="title" placeholder="Buhonero de la Carreta" /></label>
+              <label>Cartel de rotación <input formControlName="rotation_label" placeholder="Semana 1–2 · Paso Norte" /></label>
+              <label>
+                Tono de voz (sonido al hablar)
+                <select formControlName="voice_pitch">
+                  @for (v of voices; track v.key) { <option [value]="v.key">{{ v.label }}</option> }
+                </select>
+              </label>
+            </div>
+
+            <label>Saludo al entrar a la tienda <textarea rows="2" formControlName="greeting"></textarea></label>
+            <div class="grid-2">
+              <label>Frase al comprar (EXCITED) <textarea rows="2" formControlName="purchase_line"></textarea></label>
+              <label>Frase sin oro suficiente (ANGRY) <textarea rows="2" formControlName="no_gold_line"></textarea></label>
+            </div>
+
+            <!-- Frases al clickear al mercader -->
+            <div class="dm-dialogues-box">
+              <div class="dm-form-head">
+                <span class="muted small">Frases al clickear al mercader (sobre su vida, viajes, humor)</span>
+                <button type="button" class="btn ghost small" (click)="addDialogueRow()">+ Frase</button>
+              </div>
+              <div formArrayName="dialogues" class="dm-dialogue-rows">
+                @for (d of dialogueControls.controls; track d; let i = $index) {
+                  <div class="dm-dialogue-row" [formGroupName]="i">
+                    <select formControlName="pose">
+                      @for (p of poses; track p.key) { <option [value]="p.key">{{ p.label }}</option> }
+                    </select>
+                    <input formControlName="text" placeholder="Ej. Grrr... Hace años que recorro este camino..." />
+                    <button type="button" class="icon-btn" (click)="removeDialogueRow(i)" aria-label="Quitar frase">✕</button>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="actions">
+              <button type="submit" class="btn primary" [disabled]="dmSaving()">
+                {{ dmSaving() ? 'Guardando…' : editingMerchant() ? 'Guardar mercader' : 'Crear mercader' }}
+              </button>
+            </div>
+
+            <!-- Dibujos por pose (disponible una vez guardado el mercader) -->
+            @if (editingMerchant(); as em) {
+              <div class="dm-poses-box">
+                <h4 class="subtitle">Dibujos por expresión (opcionales — si falta una, usa el dibujo por defecto)</h4>
+                <div class="dm-poses-grid">
+                  @for (p of poses; track p.key) {
+                    @let url = em.pose_urls[p.key];
+                    <div class="dm-pose-card">
+                      <span class="tiny muted">{{ p.label }}</span>
+                      <div class="dm-pose-preview checkerboard">
+                        @if (url) { <img [src]="url" [alt]="p.label" /> }
+                        @else { <span class="muted tiny">Por defecto</span> }
+                      </div>
+                      <div class="dm-pose-actions">
+                        <label class="btn ghost small file-btn">
+                          {{ uploadingPose() === p.key ? '…' : url ? 'Cambiar' : 'Subir' }}
+                          <input type="file" accept="image/png,image/jpeg,image/webp" (change)="onPoseFilePicked(p.key, $event)" hidden />
+                        </label>
+                        @if (url) {
+                          <button type="button" class="btn danger small" (click)="removePose(p.key)">✕</button>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </form>
+        </div>
+      }
+
+      <!-- TAB 3: HISTORIAL DE VENTAS -->
+      @if (dmTab() === 'purchases') {
+        @if (purchases().length === 0) {
+          <p class="muted small">Todavía no se registró ninguna compra.</p>
+        } @else {
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Objeto</th>
+                  <th>Personaje</th>
+                  <th>Jugador</th>
+                  <th>Mercader</th>
+                  <th class="right">Precio</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of purchases(); track p.id) {
+                  <tr>
+                    <td><strong>{{ p.item_name }}</strong></td>
+                    <td>{{ p.character_name }}</td>
+                    <td class="muted">{{ p.user?.name ?? '—' }}</td>
+                    <td class="muted">{{ p.merchant_name }}</td>
+                    <td class="right"><span class="badge gold">🪙 {{ p.price_gp }} PO</span></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      }
+    </section>
+  }
+</div>
+
+<!-- ================= MODAL DE COMPRA ================= -->
+@if (buyingItem(); as item) {
+  <div class="modal-backdrop" (click)="!buyingBusy() && buyingItem.set(null)">
+    <div class="card modal buy-modal" (click)="$event.stopPropagation()">
+      <div class="buy-modal-top">
+        <div class="buy-modal-art">
+          @if (item.image_url) { <img [src]="item.image_url" [alt]="item.name" /> }
+          @else { <span class="item-fallback">🏺</span> }
+        </div>
+        <div>
+          <h2 class="title">{{ item.name }}</h2>
+          <p class="badge gold">🪙 {{ item.price_gp }} PO</p>
+          <p class="muted small" style="margin-top: .5rem;">{{ item.description }}</p>
+        </div>
+      </div>
+
+      @if (buyer(); as b) {
+        <div class="buy-balance">
+          <span>Oro en mano de <strong>{{ b.character_name }}</strong>: <strong>{{ b.gp }} PO</strong></span>
+          @if (b.gp < item.price_gp) {
+            <span class="muted tiny">
+              No te alcanzan las monedas literales de Oro.
+              @if (b.gold_total >= item.price_gp) {
+                Tenés {{ formatGold(b.gold_total) }} PO equivalentes: <a [routerLink]="['/personajes', b.character_id]" (click)="buyingItem.set(null)">convertí monedas en tu hoja</a>.
+              }
+            </span>
+          }
+        </div>
+      } @else {
+        <div class="alert error">Necesitás tener un personaje principal vivo para comprar.</div>
+      }
+
+      @if (buyError()) {
+        <div class="alert error">{{ buyError() }}</div>
+      }
+
+      <div class="actions">
+        <button type="button" class="btn ghost" [disabled]="buyingBusy()" (click)="buyingItem.set(null)">Cancelar</button>
+        <button type="button" class="btn primary" [disabled]="buyingBusy()" (click)="confirmBuy()">
+          {{ buyingBusy() ? 'Comprando…' : 'Comprar por ' + item.price_gp + ' PO' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+}
